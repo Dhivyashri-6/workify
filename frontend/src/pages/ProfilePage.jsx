@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiUser, FiMail, FiPhone, FiMapPin, FiEdit2, FiSave } from 'react-icons/fi';
+import { FiUser, FiMail, FiPhone, FiMapPin, FiEdit2, FiSave, FiBriefcase, FiUsers, FiX } from 'react-icons/fi';
 import { userService } from '../services/api';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 const ProfilePage = () => {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [managers, setManagers] = useState([]);
   const [formData, setFormData] = useState({
     name: user?.name || '',
+    email: user?.email || '',
     phone: user?.phone || '',
     dob: user?.dob || '',
     gender: user?.gender || '',
@@ -18,7 +20,47 @@ const ProfilePage = () => {
     city: user?.city || '',
     state: user?.state || '',
     zipCode: user?.zipCode || '',
+    department: user?.department || '',
+    designation: user?.designation || '',
+    managerId: user?.managerId?._id || user?.managerId || '',
   });
+
+  // Fetch managers for employee role
+  useEffect(() => {
+    if (user?.role === 'employee' && isEditing) {
+      fetchManagers();
+    }
+  }, [user?.role, isEditing]);
+
+  const fetchManagers = async () => {
+    try {
+      const response = await userService.getManagers();
+      setManagers(response.data || []);
+    } catch (error) {
+      console.error('Error fetching managers:', error);
+      setManagers([]);
+    }
+  };
+
+  // Update form data when user changes
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        dob: user?.dob || '',
+        gender: user?.gender || '',
+        address: user?.address || '',
+        city: user?.city || '',
+        state: user?.state || '',
+        zipCode: user?.zipCode || '',
+        department: user?.department || '',
+        designation: user?.designation || '',
+        managerId: user?.managerId?._id || user?.managerId || '',
+      });
+    }
+  }, [user]);
 
   const handleChange = (e) => {
     setFormData({
@@ -32,11 +74,23 @@ const ProfilePage = () => {
     setLoading(true);
 
     try {
-      await userService.updateProfile(formData);
+      const response = await userService.updateProfile(formData);
+      // Update the user in context
+      if (response.data?.user) {
+        setUser(response.data.user);
+        // Update localStorage
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      }
       setIsEditing(false);
       alert('Profile updated successfully!');
+      // Refresh user data
+      const profileResponse = await userService.getProfile();
+      if (profileResponse.data) {
+        setUser(profileResponse.data);
+        localStorage.setItem('user', JSON.stringify(profileResponse.data));
+      }
     } catch (error) {
-      alert('Error updating profile: ' + error.message);
+      alert('Error updating profile: ' + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
@@ -52,7 +106,26 @@ const ProfilePage = () => {
             <p className="text-gray-600 mt-2">View and manage your personal information</p>
           </div>
           <button
-            onClick={() => setIsEditing(!isEditing)}
+            onClick={() => {
+              if (isEditing) {
+                // Reset form data when canceling
+                setFormData({
+                  name: user?.name || '',
+                  email: user?.email || '',
+                  phone: user?.phone || '',
+                  dob: user?.dob || '',
+                  gender: user?.gender || '',
+                  address: user?.address || '',
+                  city: user?.city || '',
+                  state: user?.state || '',
+                  zipCode: user?.zipCode || '',
+                  department: user?.department || '',
+                  designation: user?.designation || '',
+                  managerId: user?.managerId?._id || user?.managerId || '',
+                });
+              }
+              setIsEditing(!isEditing);
+            }}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-all ${
               isEditing
                 ? 'bg-gray-200 text-gray-900 hover:bg-gray-300'
@@ -110,6 +183,29 @@ const ProfilePage = () => {
                       <p className="font-semibold text-gray-900">{user?.city || 'Not provided'}</p>
                     </div>
                   </div>
+                  <div className="flex items-start gap-4">
+                    <FiBriefcase className="text-primary mt-1" size={20} />
+                    <div>
+                      <p className="text-sm text-gray-600">Department</p>
+                      <p className="font-semibold text-gray-900">{user?.department || 'Not provided'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <FiBriefcase className="text-primary mt-1" size={20} />
+                    <div>
+                      <p className="text-sm text-gray-600">Designation</p>
+                      <p className="font-semibold text-gray-900">{user?.designation || 'Not provided'}</p>
+                    </div>
+                  </div>
+                  {user?.role === 'employee' && user?.managerId && (
+                    <div className="flex items-start gap-4">
+                      <FiUsers className="text-primary mt-1" size={20} />
+                      <div>
+                        <p className="text-sm text-gray-600">Manager</p>
+                        <p className="font-semibold text-gray-900">{user?.managerId?.name || 'Not assigned'}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -117,13 +213,25 @@ const ProfilePage = () => {
                 <h3 className="text-xl font-bold text-gray-900 mb-6">Edit Profile</h3>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    <label className="form-label">Full Name</label>
+                    <label className="form-label">Full Name *</label>
                     <input
                       type="text"
                       name="name"
                       value={formData.name}
                       onChange={handleChange}
                       className="input-field"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Email *</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      className="input-field"
+                      required
                     />
                   </div>
                   <div>
@@ -134,6 +242,7 @@ const ProfilePage = () => {
                       value={formData.phone}
                       onChange={handleChange}
                       className="input-field"
+                      placeholder="+1234567890"
                     />
                   </div>
                   <div>
@@ -141,7 +250,7 @@ const ProfilePage = () => {
                     <input
                       type="date"
                       name="dob"
-                      value={formData.dob ? formData.dob.split('T')[0] : ''}
+                      value={formData.dob ? (typeof formData.dob === 'string' ? formData.dob.split('T')[0] : new Date(formData.dob).toISOString().split('T')[0]) : ''}
                       onChange={handleChange}
                       className="input-field"
                     />
@@ -161,6 +270,46 @@ const ProfilePage = () => {
                     </select>
                   </div>
                   <div>
+                    <label className="form-label">Department</label>
+                    <input
+                      type="text"
+                      name="department"
+                      value={formData.department}
+                      onChange={handleChange}
+                      className="input-field"
+                      placeholder="e.g., Engineering, HR, Sales"
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Designation</label>
+                    <input
+                      type="text"
+                      name="designation"
+                      value={formData.designation}
+                      onChange={handleChange}
+                      className="input-field"
+                      placeholder="e.g., Software Engineer, HR Manager"
+                    />
+                  </div>
+                  {user?.role === 'employee' && (
+                    <div>
+                      <label className="form-label">Manager</label>
+                      <select
+                        name="managerId"
+                        value={formData.managerId}
+                        onChange={handleChange}
+                        className="input-field"
+                      >
+                        <option value="">No Manager</option>
+                        {managers.map(manager => (
+                          <option key={manager._id} value={manager._id}>
+                            {manager.name} - {manager.department || 'N/A'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="md:col-span-2">
                     <label className="form-label">Address</label>
                     <input
                       type="text"
@@ -168,6 +317,7 @@ const ProfilePage = () => {
                       value={formData.address}
                       onChange={handleChange}
                       className="input-field"
+                      placeholder="Street address"
                     />
                   </div>
                   <div>
@@ -201,6 +351,16 @@ const ProfilePage = () => {
                     />
                   </div>
                 </div>
+                
+                {/* Role Display (Read-only) */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <label className="form-label text-gray-600">Role (Cannot be changed)</label>
+                  <div className="mt-2">
+                    <span className="px-3 py-1 rounded-full text-sm font-bold bg-primary text-white capitalize">
+                      {user?.role}
+                    </span>
+                  </div>
+                </div>
 
                 <div className="flex gap-4 pt-4">
                   <button
@@ -213,7 +373,24 @@ const ProfilePage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsEditing(false)}
+                    onClick={() => {
+                      // Reset form data when canceling
+                      setFormData({
+                        name: user?.name || '',
+                        email: user?.email || '',
+                        phone: user?.phone || '',
+                        dob: user?.dob || '',
+                        gender: user?.gender || '',
+                        address: user?.address || '',
+                        city: user?.city || '',
+                        state: user?.state || '',
+                        zipCode: user?.zipCode || '',
+                        department: user?.department || '',
+                        designation: user?.designation || '',
+                        managerId: user?.managerId?._id || user?.managerId || '',
+                      });
+                      setIsEditing(false);
+                    }}
                     className="btn-secondary"
                   >
                     Cancel

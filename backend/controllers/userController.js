@@ -14,24 +14,59 @@ exports.getProfile = async (req, res) => {
 // Update user profile
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, phone, dob, gender, address, city, state, zipCode, profileImage } = req.body;
+    const { name, email, phone, dob, gender, address, city, state, zipCode, department, designation, managerId, profileImage } = req.body;
+
+    // Check if email is being changed and if it already exists
+    if (email && email !== req.user.email) {
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser && existingUser._id.toString() !== req.user.id) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
+    }
+
+    const updateData = {
+      name,
+      phone,
+      dob,
+      gender,
+      address,
+      city,
+      state,
+      zipCode,
+      profileImage,
+      updatedAt: new Date(),
+    };
+
+    // Allow email update
+    if (email) {
+      updateData.email = email.toLowerCase();
+    }
+
+    // Allow department and designation update
+    if (department !== undefined) {
+      updateData.department = department;
+    }
+    if (designation !== undefined) {
+      updateData.designation = designation;
+    }
+
+    // Allow managerId update only for employees
+    if (req.user.role === 'employee' && managerId !== undefined) {
+      // Validate manager exists and is actually a manager
+      if (managerId) {
+        const manager = await User.findById(managerId);
+        if (!manager || manager.role !== 'manager') {
+          return res.status(400).json({ message: 'Invalid manager selected' });
+        }
+      }
+      updateData.managerId = managerId || null;
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      {
-        name,
-        phone,
-        dob,
-        gender,
-        address,
-        city,
-        state,
-        zipCode,
-        profileImage,
-        updatedAt: new Date(),
-      },
+      updateData,
       { new: true, runValidators: true }
-    );
+    ).populate('managerId', 'name email');
 
     res.json({ message: 'Profile updated successfully', user });
   } catch (error) {
@@ -68,6 +103,18 @@ exports.getTeamMembers = async (req, res) => {
 
     const users = await User.find(query).select('-password');
     res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get all managers (for employee profile editing)
+exports.getManagers = async (req, res) => {
+  try {
+    const managers = await User.find({ role: 'manager', isActive: true })
+      .select('name email department designation')
+      .sort({ name: 1 });
+    res.json(managers);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

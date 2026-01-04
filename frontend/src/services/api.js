@@ -35,6 +35,7 @@ export const userService = {
   getProfile: () => apiClient.get('/users/profile'),
   updateProfile: (data) => apiClient.put('/users/profile', data),
   getTeamMembers: () => apiClient.get('/users/team'),
+  getManagers: () => apiClient.get('/users/managers'),
   getAllUsers: () => apiClient.get('/users'),
   addUser: (userData) => apiClient.post('/users', userData),
   removeUser: (userId) => apiClient.delete(`/users/${userId}`),
