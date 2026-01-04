@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiCalendar, FiAlertCircle, FiCheckCircle, FiTrendingUp, FiUsers, FiClock } from 'react-icons/fi';
+import { FiCalendar, FiAlertCircle, FiCheckCircle, FiTrendingUp, FiUsers, FiClock, FiFileText } from 'react-icons/fi';
 import { leaveService, userService } from '../services/api';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({});
   const [leaves, setLeaves] = useState([]);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -20,6 +23,17 @@ const Dashboard = () => {
       setLoading(true);
       const leaveRes = await leaveService.getMyLeaves();
       setLeaves(leaveRes.data);
+
+      // Fetch pending approvals for managers, HR, and directors
+      if (user?.role === 'manager' || user?.role === 'hr' || user?.role === 'director') {
+        try {
+          const approvalsRes = await leaveService.getLeaveRequests();
+          setPendingApprovals(approvalsRes.data || []);
+        } catch (error) {
+          console.error('Error fetching pending approvals:', error);
+          setPendingApprovals([]);
+        }
+      }
 
       // Calculate stats
       const approved = leaveRes.data.filter(l => l.status === 'director-approved').length;
@@ -107,7 +121,7 @@ const Dashboard = () => {
         </div>
 
         {/* Main Statistics */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className={`grid md:grid-cols-2 ${(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
           <StatCard
             icon={FiCalendar}
             label="Total Applications"
@@ -136,6 +150,16 @@ const Dashboard = () => {
             color="bg-red-500"
             trend={stats.rejected > 0 ? `${stats.rejected} rejected` : "No rejections"}
           />
+          {/* Pending Approvals Card - Only for Managers, HR, and Directors */}
+          {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') && (
+            <StatCard
+              icon={FiFileText}
+              label="Pending Approvals"
+              value={pendingApprovals.length || 0}
+              color="bg-orange-500"
+              trend={pendingApprovals.length > 0 ? `${pendingApprovals.length} awaiting review` : "All caught up"}
+            />
+          )}
         </div>
 
         {/* Leave Balance & Recent Leaves */}
@@ -218,6 +242,98 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* Pending Approvals Section - For Managers, HR, and Directors */}
+        {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') && (
+          <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <FiFileText className="text-primary" size={28} />
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Pending Leave Approvals</h2>
+                  <p className="text-sm text-gray-600">
+                    {pendingApprovals.length === 0 
+                      ? 'No pending approvals' 
+                      : `${pendingApprovals.length} leave request${pendingApprovals.length > 1 ? 's' : ''} awaiting your review`}
+                  </p>
+                </div>
+              </div>
+              {pendingApprovals.length > 0 && (
+                <button
+                  onClick={() => navigate('/approvals')}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  View All Approvals
+                  <FiFileText size={18} />
+                </button>
+              )}
+            </div>
+
+            {pendingApprovals.length === 0 ? (
+              <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                <FiCheckCircle className="mx-auto mb-4 text-green-500" size={48} />
+                <p className="text-gray-600 font-medium">All caught up!</p>
+                <p className="text-gray-500 text-sm">No pending leave requests at the moment</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {pendingApprovals.slice(0, 5).map((leave) => (
+                  <div 
+                    key={leave._id} 
+                    className="flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg hover:shadow-md transition-all border border-orange-200 cursor-pointer"
+                    onClick={() => navigate('/approvals')}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-bold text-gray-900">
+                          {leave.employeeId?.name || 'Unknown Employee'}
+                        </h3>
+                        <span className="text-xs text-gray-500 capitalize">
+                          ({leave.employeeId?.role || 'employee'})
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 mb-1">
+                        <span className="font-semibold capitalize">{leave.leaveType}</span> • {leave.numberOfDays} days
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
+                      </p>
+                      {leave.reason && (
+                        <p className="text-xs text-gray-500 mt-1 truncate max-w-md">{leave.reason}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2 ml-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+                        leave.status === 'applied' ? 'bg-blue-100 text-blue-800' :
+                        leave.status === 'manager-approved' ? 'bg-yellow-100 text-yellow-800' :
+                        leave.status === 'hr-approved' ? 'bg-purple-100 text-purple-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {leave.status === 'applied' ? 'Awaiting Manager' :
+                         leave.status === 'manager-approved' ? 'Awaiting HR' :
+                         leave.status === 'hr-approved' ? 'Awaiting Director' :
+                         leave.status.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-orange-600 font-semibold">
+                        Action Required
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {pendingApprovals.length > 5 && (
+                  <div className="text-center pt-4">
+                    <button
+                      onClick={() => navigate('/approvals')}
+                      className="text-primary hover:text-accent font-semibold text-sm"
+                    >
+                      View {pendingApprovals.length - 5} more request{pendingApprovals.length - 5 > 1 ? 's' : ''} →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Info Cards */}
         {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') && (
           <div className="grid md:grid-cols-2 gap-6">
@@ -225,17 +341,23 @@ const Dashboard = () => {
               <FiUsers className="text-purple-600 mb-3" size={28} />
               <h3 className="text-lg font-bold text-gray-900 mb-2">Team Management</h3>
               <p className="text-gray-700 mb-4">View and manage your team members, their leaves, and performance metrics.</p>
-              <a href="/team-leaves" className="text-purple-600 font-semibold hover:text-purple-700 transition">
+              <button 
+                onClick={() => navigate('/team-leaves')}
+                className="text-purple-600 font-semibold hover:text-purple-700 transition"
+              >
                 View Team →
-              </a>
+              </button>
             </div>
             <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-lg p-6 border border-orange-200">
               <FiAlertCircle className="text-orange-600 mb-3" size={28} />
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Pending Approvals</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Leave Approvals</h3>
               <p className="text-gray-700 mb-4">Review and approve leave requests from your team or direct reports.</p>
-              <a href="/approvals" className="text-orange-600 font-semibold hover:text-orange-700 transition">
+              <button 
+                onClick={() => navigate('/approvals')}
+                className="text-orange-600 font-semibold hover:text-orange-700 transition"
+              >
                 Review Requests →
-              </a>
+              </button>
             </div>
           </div>
         )}
