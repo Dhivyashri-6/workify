@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiMenu, FiX, FiLogOut, FiHome, FiCalendar, FiUsers, FiSettings, FiFileText, FiUser } from 'react-icons/fi';
+import { FiMenu, FiX, FiLogOut, FiHome, FiCalendar, FiUsers, FiSettings, FiFileText, FiUser, FiUserCheck } from 'react-icons/fi';
 import { BsBarChart } from 'react-icons/bs';
 
 const DashboardLayout = ({ children }) => {
@@ -23,6 +23,7 @@ const DashboardLayout = ({ children }) => {
     user?.role === 'manager' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
     user?.role === 'hr' && { path: '/approvals', label: 'Approvals', icon: FiFileText },
     user?.role === 'director' && { path: '/admin', label: 'Admin', icon: FiUsers },
+    user?.role === 'director' && { path: '/user-management', label: 'User Management', icon: FiUserCheck },
     user?.role === 'director' && { path: '/reports', label: 'Reports', icon: BsBarChart },
     { path: '/settings', label: 'Settings', icon: FiSettings },
   ].filter(Boolean);

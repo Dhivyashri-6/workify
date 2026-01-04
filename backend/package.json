@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "add-users": "node addUsers.js",
+    "seed": "node seed.js"
   },
   "keywords": ["hrms", "leave", "management"],
   "author": "Qantler Technologies",

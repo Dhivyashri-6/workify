@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiMail, FiLock } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiUser, FiUsers, FiBriefcase, FiShield } from 'react-icons/fi';
 import { userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../layouts/DashboardLayout';
 
-const AdminPage = () => {
+const UserManagementPage = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +16,7 @@ const AdminPage = () => {
     role: 'employee',
     department: '',
     designation: '',
+    phone: '',
     managerId: '',
   });
 
@@ -32,6 +33,7 @@ const AdminPage = () => {
       setUsers(response.data);
     } catch (error) {
       console.error('Error fetching users:', error);
+      alert('Error fetching users: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -49,16 +51,24 @@ const AdminPage = () => {
     try {
       const response = await userService.addUser(formData);
       alert(`User added successfully!\nEmail: ${response.data.user.email}\nTemporary Password: ${response.data.user.temporaryPassword}`);
-      setFormData({ name: '', email: '', role: 'employee', department: '', designation: '', managerId: '' });
+      setFormData({ 
+        name: '', 
+        email: '', 
+        role: 'employee', 
+        department: '', 
+        designation: '', 
+        phone: '',
+        managerId: '' 
+      });
       setShowForm(false);
       fetchUsers();
     } catch (error) {
-      alert('Error adding user: ' + error.message);
+      alert('Error adding user: ' + (error.response?.data?.message || error.message));
     }
   };
 
   const handleRemoveUser = async (userId, userName) => {
-    if (window.confirm(`Are you sure you want to permanently delete ${userName || 'this user'}? This action cannot be undone and will remove the user from the system.`)) {
+    if (window.confirm(`Are you sure you want to permanently delete ${userName}? This action cannot be undone and will remove the user from the system.`)) {
       try {
         await userService.removeUser(userId);
         alert('User deleted successfully');
@@ -75,7 +85,7 @@ const AdminPage = () => {
     return u.role === filter;
   });
 
-  const managers = users.filter(u => u.role === 'manager');
+  const managers = users.filter(u => u.role === 'manager' && u.isActive);
 
   if (user?.role !== 'director') {
     return (
@@ -88,14 +98,21 @@ const AdminPage = () => {
     );
   }
 
+  const roleStats = {
+    employee: users.filter(u => u.role === 'employee').length,
+    manager: users.filter(u => u.role === 'manager').length,
+    hr: users.filter(u => u.role === 'hr').length,
+    director: users.filter(u => u.role === 'director').length,
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
-            <p className="text-gray-600 mt-2">Manage employees, managers, and HR personnel</p>
+            <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+            <p className="text-gray-600 mt-2">Add and remove employees, managers, and HR personnel</p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -104,6 +121,54 @@ const AdminPage = () => {
             <FiPlus size={20} />
             Add User
           </button>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid md:grid-cols-4 gap-6">
+          <div className="card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <FiUser className="text-blue-600" size={24} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{roleStats.employee}</p>
+                <p className="text-sm text-gray-600">Employees</p>
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <FiBriefcase className="text-purple-600" size={24} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{roleStats.manager}</p>
+                <p className="text-sm text-gray-600">Managers</p>
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-green-100 rounded-lg">
+                <FiShield className="text-green-600" size={24} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{roleStats.hr}</p>
+                <p className="text-sm text-gray-600">HR Staff</p>
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-red-100 rounded-lg">
+                <FiUsers className="text-red-600" size={24} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{roleStats.director}</p>
+                <p className="text-sm text-gray-600">Directors</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Add User Form */}
@@ -148,6 +213,7 @@ const AdminPage = () => {
                     <option value="employee">Employee</option>
                     <option value="manager">Manager</option>
                     <option value="hr">HR</option>
+                    <option value="director">Director</option>
                   </select>
                 </div>
                 <div>
@@ -157,7 +223,7 @@ const AdminPage = () => {
                     name="department"
                     value={formData.department}
                     onChange={handleChange}
-                    placeholder="e.g., Engineering"
+                    placeholder="e.g., Engineering, HR, Sales"
                     className="input-field"
                   />
                 </div>
@@ -168,7 +234,18 @@ const AdminPage = () => {
                     name="designation"
                     value={formData.designation}
                     onChange={handleChange}
-                    placeholder="e.g., Senior Developer"
+                    placeholder="e.g., Senior Developer, HR Manager"
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Phone</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    placeholder="+1234567890"
                     className="input-field"
                   />
                 </div>
@@ -184,7 +261,7 @@ const AdminPage = () => {
                       <option value="">Select Manager</option>
                       {managers.map(manager => (
                         <option key={manager._id} value={manager._id}>
-                          {manager.name}
+                          {manager.name} - {manager.department || 'N/A'}
                         </option>
                       ))}
                     </select>
@@ -213,17 +290,23 @@ const AdminPage = () => {
 
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-3">
-          {['all', 'employee', 'manager', 'hr'].map(role => (
+          {[
+            { value: 'all', label: 'All Users' },
+            { value: 'employee', label: 'Employees' },
+            { value: 'manager', label: 'Managers' },
+            { value: 'hr', label: 'HR Staff' },
+            { value: 'director', label: 'Directors' },
+          ].map(({ value, label }) => (
             <button
-              key={role}
-              onClick={() => setFilter(role)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all capitalize ${
-                filter === role
+              key={value}
+              onClick={() => setFilter(value)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                filter === value
                   ? 'bg-primary text-white'
                   : 'bg-gray-200 text-gray-900 hover:bg-gray-300'
               }`}
             >
-              {role}
+              {label}
             </button>
           ))}
         </div>
@@ -237,10 +320,16 @@ const AdminPage = () => {
                 <p className="text-gray-600">Loading users...</p>
               </div>
             </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-gray-600 text-lg">No users found</p>
+            </div>
           ) : (
             <>
               <div className="mb-6">
-                <h2 className="text-lg font-bold text-gray-900">Total Users: {filteredUsers.length}</h2>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {filter === 'all' ? 'All Users' : filter.charAt(0).toUpperCase() + filter.slice(1)}: {filteredUsers.length}
+                </h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -250,6 +339,7 @@ const AdminPage = () => {
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Role</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Designation</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Action</th>
                     </tr>
@@ -273,6 +363,7 @@ const AdminPage = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-gray-600">{userItem.department || '-'}</td>
+                        <td className="py-3 px-4 text-gray-600">{userItem.designation || '-'}</td>
                         <td className="py-3 px-4">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                             userItem.isActive
@@ -283,13 +374,15 @@ const AdminPage = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <button
-                            onClick={() => handleRemoveUser(userItem._id, userItem.name)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remove User"
-                          >
-                            <FiTrash2 size={18} />
-                          </button>
+                          {userItem._id !== user?._id && (
+                            <button
+                              onClick={() => handleRemoveUser(userItem._id, userItem.name)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Remove User"
+                            >
+                              <FiTrash2 size={18} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -299,25 +392,10 @@ const AdminPage = () => {
             </>
           )}
         </div>
-
-        {/* Summary Stats */}
-        <div className="grid md:grid-cols-4 gap-6">
-          {[
-            { role: 'employee', label: 'Employees', color: 'bg-blue-100 text-blue-800' },
-            { role: 'manager', label: 'Managers', color: 'bg-purple-100 text-purple-800' },
-            { role: 'hr', label: 'HR Staff', color: 'bg-green-100 text-green-800' },
-          ].map(({ role, label, color }) => (
-            <div key={role} className="card text-center">
-              <p className={`inline-block px-4 py-2 rounded-full text-sm font-bold ${color} mb-4`}>
-                {users.filter(u => u.role === role).length}
-              </p>
-              <h3 className="font-bold text-gray-900">{label}</h3>
-            </div>
-          ))}
-        </div>
       </div>
     </DashboardLayout>
   );
 };
 
-export default AdminPage;
+export default UserManagementPage;
+
