@@ -16,6 +16,31 @@ const LeavesPage = () => {
     fetchLeaves();
   }, []);
 
+  // Get available status filters based on user role
+  const getAvailableStatusFilters = () => {
+    if (user?.role === 'director') {
+      // Director: Only see Director Approved
+      return ['all', 'director-approved', 'rejected'];
+    } else if (user?.role === 'hr') {
+      // HR: Only see HR Approved and Director Approved
+      return ['all', 'hr-approved', 'director-approved', 'rejected'];
+    } else if (user?.role === 'manager') {
+      // Manager: Only see Manager Approved, HR Approved, and Director Approved
+      return ['all', 'manager-approved', 'hr-approved', 'director-approved', 'rejected'];
+    } else {
+      // Employee: See all statuses
+      return ['all', 'applied', 'manager-approved', 'hr-approved', 'director-approved', 'rejected'];
+    }
+  };
+
+  // Reset filter if current filter is not available for user's role
+  useEffect(() => {
+    const availableFilters = getAvailableStatusFilters();
+    if (!availableFilters.includes(filter)) {
+      setFilter('all');
+    }
+  }, [user?.role, filter]);
+
   const fetchLeaves = async () => {
     try {
       setLoading(true);
@@ -28,7 +53,28 @@ const LeavesPage = () => {
     }
   };
 
+  // Filter leaves based on role and selected filter
   const filteredLeaves = leaves.filter(leave => {
+    // First, filter by role-based visibility
+    if (user?.role === 'director') {
+      // Director: Only see director-approved leaves
+      if (leave.status !== 'director-approved' && leave.status !== 'rejected') {
+        return false;
+      }
+    } else if (user?.role === 'hr') {
+      // HR: Only see hr-approved and director-approved leaves
+      if (!['hr-approved', 'director-approved', 'rejected'].includes(leave.status)) {
+        return false;
+      }
+    } else if (user?.role === 'manager') {
+      // Manager: Only see manager-approved, hr-approved, and director-approved leaves
+      if (!['manager-approved', 'hr-approved', 'director-approved', 'rejected'].includes(leave.status)) {
+        return false;
+      }
+    }
+    // Employee: See all statuses (no filtering)
+
+    // Then apply the selected filter
     if (filter === 'all') return true;
     return leave.status === filter;
   });
@@ -70,7 +116,7 @@ const LeavesPage = () => {
 
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-3">
-          {['all', 'applied', 'manager-approved', 'hr-approved', 'director-approved', 'rejected'].map(
+          {getAvailableStatusFilters().map(
             (status) => (
               <button
                 key={status}

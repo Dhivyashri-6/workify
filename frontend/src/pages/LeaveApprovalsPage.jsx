@@ -134,78 +134,140 @@ const LeaveApprovalsPage = () => {
                     <div className="mt-4">
                       <p className="text-xs text-gray-600 font-bold mb-3">Approval Timeline</p>
                       <div className="space-y-2">
-                        {['manager', 'hr', 'director'].map((role) => {
-                          const approval = leave.approvals?.find(a => a.role === role);
-                          return (
-                            <div key={role} className="flex items-center gap-3 text-sm">
-                              <div className="w-24 font-medium capitalize text-gray-700">{role}</div>
-                              {approval ? (
-                                <>
-                                  <div
-                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-white ${
-                                      approval.status === 'approved' ? 'bg-green-500' : 'bg-red-500'
-                                    }`}
-                                  >
-                                    {approval.status === 'approved' ? <FiCheck size={14} /> : <FiX size={14} />}
-                                  </div>
-                                  <span className={approval.status === 'approved' ? 'text-green-600' : 'text-red-600'}>
-                                    {approval.status.toUpperCase()}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="w-6 h-6 rounded-full border-2 border-gray-300"></div>
-                                  <span className="text-gray-500">PENDING</span>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
+                        {(() => {
+                          const employeeRole = leave.employeeId?.role || 'employee';
+                          let rolesToShow = [];
+                          
+                          if (employeeRole === 'employee') {
+                            // Employee workflow: Manager → HR → Director
+                            rolesToShow = ['manager', 'hr', 'director'];
+                          } else if (employeeRole === 'manager' || employeeRole === 'hr') {
+                            // Manager/HR workflow: Direct to Director
+                            rolesToShow = ['director'];
+                          } else {
+                            rolesToShow = ['director'];
+                          }
+                          
+                          return rolesToShow.map((role) => {
+                            const approval = leave.approvals?.find(a => a.role === role);
+                            return (
+                              <div key={role} className="flex items-center gap-3 text-sm">
+                                <div className="w-24 font-medium capitalize text-gray-700">{role}</div>
+                                {approval ? (
+                                  <>
+                                    <div
+                                      className={`w-6 h-6 rounded-full flex items-center justify-center text-white ${
+                                        approval.status === 'approved' ? 'bg-green-500' : 'bg-red-500'
+                                      }`}
+                                    >
+                                      {approval.status === 'approved' ? <FiCheck size={14} /> : <FiX size={14} />}
+                                    </div>
+                                    <span className={approval.status === 'approved' ? 'text-green-600' : 'text-red-600'}>
+                                      {approval.status.toUpperCase()}
+                                    </span>
+                                    {approval.comments && (
+                                      <span className="text-xs text-gray-500 ml-2">({approval.comments})</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="w-6 h-6 rounded-full border-2 border-gray-300"></div>
+                                    <span className="text-gray-500">PENDING</span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
+                    </div>
+                    
+                    {/* Show employee role for context */}
+                    <div className="mt-2">
+                      <span className="text-xs text-gray-500">
+                        Employee Role: <span className="font-semibold capitalize">{leave.employeeId?.role || 'employee'}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Action Buttons */}
-                {selectedLeave === leave._id && (
-                  <div className="mt-6 pt-6 border-t border-gray-200">
-                    <div className="mb-4">
-                      <label className="form-label">Approval Comments</label>
-                      <textarea
-                        value={approvalData.comments}
-                        onChange={(e) => setApprovalData({ comments: e.target.value })}
-                        placeholder="Add your comments for approval/rejection"
-                        className="input-field"
-                        rows="3"
-                      />
+                {selectedLeave === leave._id && (() => {
+                  const employeeRole = leave.employeeId?.role || 'employee';
+                  let canApprove = false;
+                  
+                  // Check if current user can approve this leave
+                  if (user?.role === 'manager') {
+                    canApprove = employeeRole === 'employee' && leave.status === 'applied';
+                  } else if (user?.role === 'hr') {
+                    canApprove = employeeRole === 'employee' && leave.status === 'manager-approved';
+                  } else if (user?.role === 'director') {
+                    if (employeeRole === 'employee') {
+                      canApprove = leave.status === 'hr-approved';
+                    } else if (employeeRole === 'manager' || employeeRole === 'hr') {
+                      canApprove = leave.status === 'applied';
+                    }
+                  }
+                  
+                  if (!canApprove) {
+                    return (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <p className="text-sm text-gray-600">
+                          This leave is not ready for your approval. Current status: <span className="font-semibold">{leave.status}</span>
+                        </p>
+                        <button
+                          onClick={() => {
+                            setSelectedLeave(null);
+                            setApprovalData({ comments: '' });
+                          }}
+                          className="mt-4 px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold rounded-lg transition-all"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="mt-6 pt-6 border-t border-gray-200">
+                      <div className="mb-4">
+                        <label className="form-label">Approval Comments (Optional)</label>
+                        <textarea
+                          value={approvalData.comments}
+                          onChange={(e) => setApprovalData({ comments: e.target.value })}
+                          placeholder="Add your comments for approval/rejection"
+                          className="input-field"
+                          rows="3"
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleApproveLeave(leave._id)}
+                          className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg transition-all"
+                        >
+                          <FiCheck size={20} />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleRejectLeave(leave._id)}
+                          className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-lg transition-all"
+                        >
+                          <FiX size={20} />
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedLeave(null);
+                            setApprovalData({ comments: '' });
+                          }}
+                          className="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold rounded-lg transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => handleApproveLeave(leave._id)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg transition-all"
-                      >
-                        <FiCheck size={20} />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleRejectLeave(leave._id)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-lg transition-all"
-                      >
-                        <FiX size={20} />
-                        Reject
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedLeave(null);
-                          setApprovalData({ comments: '' });
-                        }}
-                        className="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold rounded-lg transition-all"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             ))}
           </div>

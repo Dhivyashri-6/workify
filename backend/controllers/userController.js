@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Leave = require('../models/Leave');
 
 // Get user profile
 exports.getProfile = async (req, res) => {
@@ -124,11 +125,39 @@ exports.removeUser = async (req, res) => {
       return res.status(400).json({ message: 'Cannot remove yourself' });
     }
 
-    const user = await User.findByIdAndUpdate(userId, { isActive: false }, { new: true });
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Remove managerId references from employees who have this user as manager
+    await User.updateMany(
+      { managerId: userId },
+      { $unset: { managerId: '' } }
+    );
+
+    // Delete all leaves associated with this user
+    await Leave.deleteMany({ employeeId: userId });
+
+    // Delete all leaves where this user was an approver
+    await Leave.updateMany(
+      { 'approvals.userId': userId },
+      { $pull: { approvals: { userId: userId } } }
+    );
+
+    // Delete leaves where this user rejected them
+    await Leave.updateMany(
+      { rejectedBy: userId },
+      { $unset: { rejectedBy: '' } }
+    );
+
+    // Delete the user from database
+    await User.findByIdAndDelete(userId);
 
     // TODO: Send termination email
 
-    res.json({ message: 'User removed successfully', user });
+    res.json({ message: 'User deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
