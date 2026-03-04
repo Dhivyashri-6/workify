@@ -12,7 +12,7 @@ const TeamLeavesPage = () => {
 
   useEffect(() => {
     fetchTeamLeaves();
-  }, []);
+  }, [user]);
 
   const fetchTeamLeaves = async () => {
     try {
@@ -26,26 +26,44 @@ const TeamLeavesPage = () => {
     }
   };
 
+  const handleApprove = async (leaveId) => {
+    try {
+      const comment = prompt('Enter optimization comments (optional):');
+      await leaveService.approveLeave(leaveId, { comments: comment || 'Approved' });
+      alert('Leave approved successfully');
+      fetchTeamLeaves();
+    } catch (error) {
+      alert('Error approving leave: ' + error.message);
+    }
+  };
+
+  const handleReject = async (leaveId) => {
+    try {
+      const comment = prompt('Enter rejection reason (required):');
+      if (!comment) return;
+      await leaveService.rejectLeave(leaveId, { comments: comment });
+      alert('Leave rejected successfully');
+      fetchTeamLeaves();
+    } catch (error) {
+      alert('Error rejecting leave: ' + error.message);
+    }
+  };
+
+  // Filter leaves based on role and selected filter
   const filteredLeaves = leaves.filter(leave => {
     if (filter === 'all') return true;
+    if (filter === 'Rejected') return leave.status.startsWith('Rejected');
     return leave.status === filter;
   });
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'director-approved':
-        return 'badge-success';
-      case 'rejected':
-        return 'badge-danger';
-      case 'applied':
-        return 'badge-info';
-      default:
-        return 'badge-warning';
-    }
+    if (status === 'Approved') return 'badge-success';
+    if (status.startsWith('Rejected')) return 'badge-danger';
+    if (status.startsWith('Pending')) return 'badge-warning';
+    return 'badge-secondary';
   };
-
   const getStatusLabel = (status) => {
-    return status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    return status.replace(/_/g, ' ');
   };
 
   return (
@@ -59,7 +77,7 @@ const TeamLeavesPage = () => {
 
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-3">
-          {['all', 'applied', 'manager-approved', 'hr-approved', 'director-approved', 'rejected'].map(
+          {['all', 'Pending_TeamLeader', 'Pending_HR', 'Approved', 'Rejected'].map(
             (status) => (
               <button
                 key={status}
@@ -98,11 +116,38 @@ const TeamLeavesPage = () => {
                     <h3 className="text-lg font-bold text-gray-900">
                       {leave.employeeId?.name || 'Unknown Employee'}
                     </h3>
-                    <p className="text-sm text-gray-600">{leave.employeeId?.email}</p>
+                    <p className="text-sm text-gray-600">
+                      {leave.employeeId?.email}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(leave.createdAt).toLocaleDateString()}
+                    </p>
                   </div>
-                  <span className={`badge ${getStatusColor(leave.status)}`}>
-                    {getStatusLabel(leave.status)}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      leave.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                      leave.status.startsWith('Rejected') ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {getStatusLabel(leave.status)}
+                    </span>
+                    {user?.role === 'team_lead' && leave.status === 'Pending_TeamLeader' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApprove(leave._id)}
+                          className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleReject(leave._id)}
+                          className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mb-4 py-4 border-t border-b border-gray-200">
@@ -173,19 +218,19 @@ const TeamLeavesPage = () => {
             </div>
             <div className="card text-center">
               <p className="text-3xl font-bold text-green-500">
-                {leaves.filter(l => l.status === 'director-approved').length}
+                {leaves.filter(l => l.status === 'Approved').length}
               </p>
               <p className="text-gray-600 mt-2">Approved</p>
             </div>
             <div className="card text-center">
               <p className="text-3xl font-bold text-yellow-500">
-                {leaves.filter(l => ['applied', 'manager-approved', 'hr-approved'].includes(l.status)).length}
+                {leaves.filter(l => l.status.startsWith('Pending')).length}
               </p>
               <p className="text-gray-600 mt-2">Pending</p>
             </div>
             <div className="card text-center">
               <p className="text-3xl font-bold text-red-500">
-                {leaves.filter(l => l.status === 'rejected').length}
+                {leaves.filter(l => l.status.startsWith('Rejected')).length}
               </p>
               <p className="text-gray-600 mt-2">Rejected</p>
             </div>

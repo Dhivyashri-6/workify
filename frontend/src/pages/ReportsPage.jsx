@@ -32,9 +32,9 @@ const ReportsPage = () => {
       response.data.forEach(item => {
         item.leaves.forEach(leave => {
           totalDays += leave.numberOfDays;
-          if (leave.status === 'director-approved') {
+          if (leave.status === 'Approved') {
             totalApproved++;
-          } else if (leave.status === 'rejected') {
+          } else if (leave.status.startsWith('Rejected')) {
             totalRejected++;
           } else {
             totalPending++;
@@ -168,11 +168,9 @@ const ReportsPage = () => {
                 </thead>
                 <tbody>
                   {leaves.map((emp) => {
-                    const approved = emp.leaves.filter(l => l.status === 'director-approved').length;
-                    const rejected = emp.leaves.filter(l => l.status === 'rejected').length;
-                    const pending = emp.leaves.filter(l =>
-                      ['applied', 'manager-approved', 'hr-approved'].includes(l.status)
-                    ).length;
+                    const approved = emp.leaves.filter(l => l.status === 'Approved').length;
+                    const rejected = emp.leaves.filter(l => l.status.startsWith('Rejected')).length;
+                    const pending = emp.leaves.filter(l => l.status.startsWith('Pending')).length;
                     const totalDays = emp.leaves.reduce((sum, l) => sum + l.numberOfDays, 0);
 
                     return (

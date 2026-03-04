@@ -37,6 +37,8 @@ export const userService = {
   getTeamMembers: () => apiClient.get('/users/team'),
   getAllUsers: () => apiClient.get('/users'),
   addUser: (userData) => apiClient.post('/users', userData),
+  updateUser: (id, userData) => apiClient.put(`/users/${id}`, userData),
+  assignTeam: (data) => apiClient.post('/users/assign-team', data),
   removeUser: (userId) => apiClient.delete(`/users/${userId}`),
 };
 

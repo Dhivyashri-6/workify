@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiTrash2, FiUser, FiUsers, FiBriefcase, FiShield } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiEdit2, FiUser, FiUsers, FiBriefcase, FiShield, FiUserPlus } from 'react-icons/fi';
 import { userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../layouts/DashboardLayout';
@@ -9,6 +9,9 @@ const UserManagementPage = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [assigningTeamLead, setAssigningTeamLead] = useState(null);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [filter, setFilter] = useState('all');
   const [formData, setFormData] = useState({
     name: '',
@@ -49,8 +52,14 @@ const UserManagementPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await userService.addUser(formData);
-      alert(`User added successfully!\nEmail: ${response.data.user.email}\nTemporary Password: ${response.data.user.temporaryPassword}`);
+      if (editingUser) {
+        await userService.updateUser(editingUser._id, formData);
+        alert('User updated successfully!');
+      } else {
+        const response = await userService.addUser(formData);
+        alert(`User added successfully!\nEmail: ${response.data.user.email}\nTemporary Password: ${response.data.user.temporaryPassword}`);
+      }
+      
       setFormData({ 
         name: '', 
         email: '', 
@@ -61,10 +70,41 @@ const UserManagementPage = () => {
         managerId: '' 
       });
       setShowForm(false);
+      setEditingUser(null);
       fetchUsers();
     } catch (error) {
-      alert('Error adding user: ' + (error.response?.data?.message || error.message));
+      alert(`Error ${editingUser ? 'updating' : 'adding'} user: ` + (error.response?.data?.message || error.message));
     }
+  };
+
+  const handleEditUser = (user) => {
+    setEditingUser(user);
+    setFormData({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      department: user.department || '',
+      designation: user.designation || '',
+      phone: user.phone || '',
+      managerId: user.managerId?._id || user.managerId || ''
+    });
+    setShowForm(true);
+    // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditingUser(null);
+    setFormData({ 
+      name: '', 
+      email: '', 
+      role: 'employee', 
+      department: '', 
+      designation: '', 
+      phone: '',
+      managerId: '' 
+    });
   };
 
   const handleRemoveUser = async (userId, userName) => {
@@ -80,12 +120,47 @@ const UserManagementPage = () => {
     }
   };
 
+  const handleOpenAssignTeam = (teamLead) => {
+    setAssigningTeamLead(teamLead);
+    // Pre-select employees already assigned to this manager
+    const currentTeam = users
+      .filter(u => u.managerId?._id === teamLead._id || u.managerId === teamLead._id)
+      .map(u => u._id);
+    setSelectedEmployees(currentTeam);
+    // Scroll to section
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleToggleEmployee = (employeeId) => {
+    setSelectedEmployees(prev => {
+      if (prev.includes(employeeId)) {
+        return prev.filter(id => id !== employeeId);
+      } else {
+        return [...prev, employeeId];
+      }
+    });
+  };
+
+  const handleSaveTeam = async () => {
+    try {
+      await userService.assignTeam({
+        teamLeadId: assigningTeamLead._id,
+        employeeIds: selectedEmployees
+      });
+      alert('Team assignments updated successfully!');
+      setAssigningTeamLead(null);
+      fetchUsers();
+    } catch (error) {
+       alert('Error updating team: ' + (error.response?.data?.message || error.message));
+    }
+  };
+
   const filteredUsers = users.filter(u => {
     if (filter === 'all') return true;
     return u.role === filter;
   });
 
-  const managers = users.filter(u => u.role === 'manager' && u.isActive);
+  const teamLeads = users.filter(u => u.role === 'team_lead' && u.isActive);
 
   if (user?.role !== 'director') {
     return (
@@ -100,7 +175,7 @@ const UserManagementPage = () => {
 
   const roleStats = {
     employee: users.filter(u => u.role === 'employee').length,
-    manager: users.filter(u => u.role === 'manager').length,
+    team_lead: users.filter(u => u.role === 'team_lead').length,
     hr: users.filter(u => u.role === 'hr').length,
     director: users.filter(u => u.role === 'director').length,
   };
@@ -112,10 +187,13 @@ const UserManagementPage = () => {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
-            <p className="text-gray-600 mt-2">Add and remove employees, managers, and HR personnel</p>
+            <p className="text-gray-600 mt-2">Add and remove employees, team leads, and HR personnel</p>
           </div>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              handleCloseForm();
+              setShowForm(true);
+            }}
             className="btn-primary flex items-center gap-2"
           >
             <FiPlus size={20} />
@@ -142,8 +220,8 @@ const UserManagementPage = () => {
                 <FiBriefcase className="text-purple-600" size={24} />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900">{roleStats.manager}</p>
-                <p className="text-sm text-gray-600">Managers</p>
+                <p className="text-2xl font-bold text-gray-900">{roleStats.team_lead}</p>
+                <p className="text-sm text-gray-600">Team Leads</p>
               </div>
             </div>
           </div>
@@ -171,10 +249,77 @@ const UserManagementPage = () => {
           </div>
         </div>
 
-        {/* Add User Form */}
+        {/* Assign Team Modal/Section */}
+        {assigningTeamLead && (
+          <div className="card scroll-mt-20 border-2 border-primary" id="assignTeam">
+            <h2 className="text-xl font-bold mb-4">
+              Assign Team Members to <span className="text-primary">{assigningTeamLead.name}</span>
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Select employees to assign to this team lead. Unchecking an employee will remove them from this team.
+            </p>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6 bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+              {users
+                .filter(u => u.role === 'employee' && u.isActive)
+                .map(employee => {
+                  const currentManagerId = employee.managerId?._id || employee.managerId;
+                  const isAssignedToOther = currentManagerId && currentManagerId !== assigningTeamLead._id;
+                  const managerName = isAssignedToOther 
+                    ? users.find(u => u._id === currentManagerId)?.name 
+                    : null;
+                    
+                  return (
+                    <label 
+                      key={employee._id} 
+                      className={`flex items-start p-3 rounded-lg border cursor-pointer transition-all ${
+                        selectedEmployees.includes(employee._id) 
+                          ? 'bg-blue-50 border-primary shadow-sm ring-1 ring-blue-200' 
+                          : 'bg-white border-gray-200 hover:border-blue-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployees.includes(employee._id)}
+                        onChange={() => handleToggleEmployee(employee._id)}
+                        className="mt-1 w-5 h-5 text-primary rounded focus:ring-primary mr-3"
+                      />
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{employee.name}</p>
+                        <p className="text-xs text-gray-500">{employee.email}</p>
+                        <p className="text-xs text-gray-400 mt-1">{employee.designation || 'No designation'}</p>
+                        {isAssignedToOther && (
+                          <div className="mt-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded inline-block">
+                            Current Lead: {managerName || 'Unknown'}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+            </div>
+
+            <div className="flex gap-4">
+              <button 
+                onClick={handleSaveTeam}
+                className="btn-primary"
+              >
+                Save Team Assignments
+              </button>
+              <button
+                onClick={() => setAssigningTeamLead(null)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* User Form */}
         {showForm && (
-          <div className="card">
-            <h2 className="text-xl font-bold mb-6">Add New User</h2>
+          <div className="card scroll-mt-20" id="userForm">
+            <h2 className="text-xl font-bold mb-6">{editingUser ? 'Edit User' : 'Add New User'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
@@ -211,7 +356,7 @@ const UserManagementPage = () => {
                     required
                   >
                     <option value="employee">Employee</option>
-                    <option value="manager">Manager</option>
+                    <option value="team_lead">Team Lead</option>
                     <option value="hr">HR</option>
                     <option value="director">Director</option>
                   </select>
@@ -249,36 +394,20 @@ const UserManagementPage = () => {
                     className="input-field"
                   />
                 </div>
-                {formData.role === 'employee' && (
-                  <div>
-                    <label className="form-label">Manager</label>
-                    <select
-                      name="managerId"
-                      value={formData.managerId}
-                      onChange={handleChange}
-                      className="input-field"
-                    >
-                      <option value="">Select Manager</option>
-                      {managers.map(manager => (
-                        <option key={manager._id} value={manager._id}>
-                          {manager.name} - {manager.department || 'N/A'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
+              {!editingUser && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-gray-700">
                 <p className="font-semibold mb-2">Note:</p>
                 <p>The user will receive a temporary password via email. They can change it on first login.</p>
               </div>
+              )}
               <div className="flex gap-4">
                 <button type="submit" className="btn-primary">
-                  Add User
+                  {editingUser ? 'Update User' : 'Add User'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={handleCloseForm}
                   className="btn-secondary"
                 >
                   Cancel
@@ -293,7 +422,7 @@ const UserManagementPage = () => {
           {[
             { value: 'all', label: 'All Users' },
             { value: 'employee', label: 'Employees' },
-            { value: 'manager', label: 'Managers' },
+            { value: 'team_lead', label: 'Team Leads' },
             { value: 'hr', label: 'HR Staff' },
             { value: 'director', label: 'Directors' },
           ].map(({ value, label }) => (
@@ -353,7 +482,7 @@ const UserManagementPage = () => {
                           <span className={`px-3 py-1 rounded-full text-sm font-bold ${
                             userItem.role === 'employee'
                               ? 'bg-blue-100 text-blue-800'
-                              : userItem.role === 'manager'
+                              : userItem.role === 'team_lead'
                               ? 'bg-purple-100 text-purple-800'
                               : userItem.role === 'hr'
                               ? 'bg-green-100 text-green-800'
@@ -373,10 +502,30 @@ const UserManagementPage = () => {
                             {userItem.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="py-3 px-4">
-                          {userItem._id !== user?._id && (
+                        <td className="py-3 px-4 flex gap-2">
+                          {userItem.role === 'team_lead' && (
                             <button
-                              onClick={() => handleRemoveUser(userItem._id, userItem.name)}
+                              onClick={() => handleOpenAssignTeam(userItem)}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Assign Team Members"
+                            >
+                              <FiUserPlus size={18} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleEditUser(userItem)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit User"
+                          >
+                            <FiEdit2 size={18} />
+                          </button>
+                          {userItem._id !== user?._id && userItem.role !== 'director' && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to permanently delete ${userItem.name}?`)) {
+                                  handleRemoveUser(userItem._id, userItem.name);
+                                }
+                              }}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Remove User"
                             >

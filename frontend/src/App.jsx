@@ -95,7 +95,7 @@ const App = () => {
           <Route
             path="/team-leaves"
             element={
-              <ProtectedRoute requiredRole={['manager', 'director']}>
+              <ProtectedRoute requiredRole={['team_lead', 'hr', 'director']}>
                 <TeamLeavesPage />
               </ProtectedRoute>
             }
@@ -103,7 +103,7 @@ const App = () => {
           <Route
             path="/approvals"
             element={
-              <ProtectedRoute requiredRole={['manager', 'hr', 'director']}>
+              <ProtectedRoute requiredRole={['hr', 'director']}>
                 <LeaveApprovalsPage />
               </ProtectedRoute>
             }

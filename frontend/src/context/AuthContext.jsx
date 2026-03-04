@@ -33,12 +33,24 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const response = await authService.getCurrentUser();
+      const userData = response.data;
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      console.error('Failed to refresh user data', error);
+      // If token is invalid, maybe logout? For now just log error.
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
-    authService.logout();
   };
 
   const value = {
@@ -47,6 +59,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
+    refreshUser,
     isAuthenticated: !!token,
   };
 

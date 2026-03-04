@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiCalendar, FiSave, FiArrowLeft } from 'react-icons/fi';
 import { leaveService } from '../services/api';
@@ -7,9 +7,16 @@ import DashboardLayout from '../layouts/DashboardLayout';
 
 const ApplyLeavePage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  
+  // Refresh user data on mount to get latest leave balance
+  useEffect(() => {
+    refreshUser();
+  }, []);
+
   const [formData, setFormData] = useState({
     leaveType: 'casual',
     startDate: '',
@@ -71,11 +78,10 @@ const ApplyLeavePage = () => {
 
     try {
       await leaveService.applyLeave(formData);
-      alert('Leave applied successfully!');
-      navigate('/leaves');
+      setSuccess('Leave applied successfully!');
+      setTimeout(() => navigate('/leaves'), 1500);
     } catch (err) {
       setError(err.message || 'Error applying leave');
-    } finally {
       setLoading(false);
     }
   };
@@ -104,6 +110,11 @@ const ApplyLeavePage = () => {
           {error && (
             <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
               {error}
+            </div>
+          )}
+          {success && (
+            <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+              {success}
             </div>
           )}
 
@@ -210,33 +221,6 @@ const ApplyLeavePage = () => {
               </button>
             </div>
           </form>
-        </div>
-
-        {/* Info Card */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="font-bold text-gray-900 mb-3">Leave Application Process</h3>
-          <ul className="space-y-2 text-sm text-gray-700">
-            <li className="flex gap-2">
-              <span className="font-bold text-primary">1.</span>
-              <span>Submit your leave request with required details</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-bold text-primary">2.</span>
-              <span>Your manager will review and approve/reject</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-bold text-primary">3.</span>
-              <span>HR will review the manager's decision</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-bold text-primary">4.</span>
-              <span>Director gives final approval</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-bold text-primary">5.</span>
-              <span>Once approved, you're all set!</span>
-            </li>
-          </ul>
         </div>
       </div>
     </DashboardLayout>

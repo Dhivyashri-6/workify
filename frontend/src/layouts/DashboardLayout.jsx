@@ -17,11 +17,11 @@ const DashboardLayout = ({ children }) => {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: FiHome },
-    { path: '/leaves', label: 'Leaves', icon: FiCalendar },
+    user?.role !== 'director' && { path: '/leaves', label: 'Leaves', icon: FiCalendar },
     { path: '/profile', label: 'Profile', icon: FiUser },
     { path: '/holidays', label: 'Holidays', icon: FiCalendar },
-    user?.role === 'manager' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
-    user?.role === 'hr' && { path: '/approvals', label: 'Approvals', icon: FiFileText },
+    user?.role === 'team_lead' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
+    (user?.role === 'hr' || user?.role === 'director') && { path: '/approvals', label: 'Approvals', icon: FiFileText },
     user?.role === 'director' && { path: '/admin', label: 'Admin', icon: FiUsers },
     user?.role === 'director' && { path: '/user-management', label: 'User Management', icon: FiUserCheck },
     user?.role === 'director' && { path: '/reports', label: 'Reports', icon: BsBarChart },

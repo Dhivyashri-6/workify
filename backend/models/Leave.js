@@ -29,14 +29,22 @@ const leaveSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['applied', 'manager-approved', 'hr-approved', 'director-approved', 'rejected'],
-    default: 'applied',
+    enum: [
+      'Pending_TeamLeader',
+      'Pending_HR', 
+      'Pending_Director',
+      'Approved',
+      'Rejected_By_TeamLeader', 
+      'Rejected_By_HR',
+      'Rejected_By_Director'
+    ],
+    default: 'Pending_TeamLeader',
   },
   approvals: [
     {
       role: {
         type: String,
-        enum: ['manager', 'hr', 'director'],
+        enum: ['team_lead', 'hr', 'director'],
       },
       userId: {
         type: mongoose.Schema.ObjectId,

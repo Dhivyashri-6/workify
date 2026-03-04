@@ -7,15 +7,16 @@ exports.applyLeave = async (req, res) => {
     const { leaveType, startDate, endDate, numberOfDays, reason } = req.body;
 
     // Determine initial status based on user role
-    let initialStatus = 'applied';
-    if (req.user.role === 'director') {
-      // Directors' leaves are auto-approved
-      initialStatus = 'director-approved';
-    } else if (req.user.role === 'manager' || req.user.role === 'hr') {
-      // Manager and HR leaves go directly to director (skip manager and HR approval)
-      initialStatus = 'applied'; // Will be shown to director for approval
+    let initialStatus = 'Pending_TeamLeader';
+    
+    if (req.user.role === 'team_lead') {
+      initialStatus = 'Pending_HR';
+    } else if (req.user.role === 'hr') {
+      initialStatus = 'Pending_Director';
+    } else if (req.user.role === 'director') {
+      initialStatus = 'Approved'; 
     }
-    // Employees start with 'applied' status (default)
+    // Employees start with 'Pending_TeamLeader' status (default)
 
     const leave = await Leave.create({
       employeeId: req.user.id,
@@ -63,19 +64,31 @@ exports.getTeamLeaves = async (req, res) => {
   try {
     let query = {};
 
-    if (req.user.role === 'manager') {
+    if (req.user.role === 'team_lead') {
       const employees = await User.find({ managerId: req.user.id });
       const employeeIds = employees.map(e => e._id);
+      
+      // If no employees, return empty array immediately to avoid fetching all leaves if query becomes {}
+      if (employeeIds.length === 0) {
+        return res.json([]);
+      }
+      
       query = { employeeId: { $in: employeeIds } };
     } else if (req.user.role === 'hr') {
+      // HR usually sees everything or specific department? 
+      // Keeping it as is for now, but explicit is better.
       query = {};
     } else if (req.user.role === 'director') {
       query = {};
+    } else {
+      // Regular employees shouldn't access this, but if they do, return nothing
+      return res.status(403).json({ message: 'Access denied' });
     }
 
     const leaves = await Leave.find(query)
       .populate('employeeId', 'name email')
-      .populate('approvals.userId', 'name email');
+      .populate('approvals.userId', 'name email')
+      .sort({ createdAt: -1 });
 
     res.json(leaves);
   } catch (error) {
@@ -101,37 +114,32 @@ exports.getLeaveRequests = async (req, res) => {
   try {
     let query = {};
 
-    if (req.user.role === 'manager') {
-      // Manager sees leaves from their employees that are in 'applied' status
-      const employees = await User.find({ managerId: req.user.id, role: 'employee' });
-      const employeeIds = employees.map(e => e._id);
-      query = {
-        employeeId: { $in: employeeIds },
-        status: 'applied',
-      };
-    } else if (req.user.role === 'hr') {
-      // HR sees employee leaves that are manager-approved
-      const employees = await User.find({ role: 'employee' });
-      const employeeIds = employees.map(e => e._id);
-      query = {
-        employeeId: { $in: employeeIds },
-        status: 'manager-approved',
-      };
-    } else if (req.user.role === 'director') {
-      // Director sees:
-      // 1. Employee leaves that are hr-approved
-      // 2. Manager/HR leaves that are in 'applied' status (they skip manager and HR approval)
-      const employees = await User.find({ role: 'employee' });
+    if (req.user.role === 'team_lead') {
+      // Team Lead sees leaves from their employees that are in 'Pending_TeamLeader' status
+      const employees = await User.find({ managerId: req.user.id });
       const employeeIds = employees.map(e => e._id);
       
-      const managersAndHR = await User.find({ role: { $in: ['manager', 'hr'] } });
-      const managerHRIds = managersAndHR.map(u => u._id);
+      if (employeeIds.length === 0) {
+        return res.json([]);
+      }
 
       query = {
-        $or: [
-          { employeeId: { $in: employeeIds }, status: 'hr-approved' },
-          { employeeId: { $in: managerHRIds }, status: 'applied' },
-        ],
+        employeeId: { $in: employeeIds },
+        status: 'Pending_TeamLeader',
+      };
+    } else if (req.user.role === 'hr') {
+      // HR Approves:
+      // 1. Employee leaves that are Pending_HR
+      // 2. Team Lead leaves that are Pending_HR
+      
+      query = { status: 'Pending_HR' };
+
+    } else if (req.user.role === 'director') {
+      // Director Approves:
+      // 1. HR leaves that are Pending_Director
+      
+      query = { 
+         status: 'Pending_Director' 
       };
     }
 
@@ -161,31 +169,31 @@ exports.approveLeave = async (req, res) => {
     let newStatus = '';
     let canApprove = false;
 
-    if (req.user.role === 'manager') {
-      // Manager can only approve employee leaves in 'applied' status
-      if (employeeRole === 'employee' && leave.status === 'applied') {
-        newStatus = 'manager-approved';
+    if (req.user.role === 'team_lead') {
+      // Team Lead can only approve employee leaves in 'Pending_TeamLeader' status
+      if (employeeRole === 'employee' && leave.status === 'Pending_TeamLeader') {
+        newStatus = 'Pending_HR';
         canApprove = true;
       } else {
-        return res.status(400).json({ message: 'Invalid leave status for manager approval' });
+        return res.status(400).json({ message: 'Invalid leave status for Team Lead approval' });
       }
     } else if (req.user.role === 'hr') {
-      // HR can only approve employee leaves that are manager-approved
-      if (employeeRole === 'employee' && leave.status === 'manager-approved') {
-        newStatus = 'hr-approved';
+      // HR Approves:
+      // 1. Employee leaves (Pending_HR) -> Approved
+      // 2. Team Lead leaves (Pending_HR) -> Approved
+      
+      if (leave.status === 'Pending_HR') {
+        newStatus = 'Approved';
         canApprove = true;
       } else {
         return res.status(400).json({ message: 'Invalid leave status for HR approval' });
       }
     } else if (req.user.role === 'director') {
-      // Director can approve:
-      // 1. Employee leaves that are hr-approved
-      // 2. Manager/HR leaves that are in 'applied' status
-      if (employeeRole === 'employee' && leave.status === 'hr-approved') {
-        newStatus = 'director-approved';
-        canApprove = true;
-      } else if ((employeeRole === 'manager' || employeeRole === 'hr') && leave.status === 'applied') {
-        newStatus = 'director-approved';
+      // Director Approves:
+      // 1. HR leaves (Pending_Director) -> Approved
+
+      if (employeeRole === 'hr' && leave.status === 'Pending_Director') {
+        newStatus = 'Approved';
         canApprove = true;
       } else {
         return res.status(400).json({ message: 'Invalid leave status for director approval' });
@@ -208,7 +216,7 @@ exports.approveLeave = async (req, res) => {
     await leave.save();
 
     // If fully approved, update leave balance
-    if (newStatus === 'director-approved') {
+    if (newStatus === 'Approved') {
       const user = await User.findById(leave.employeeId._id);
       if (user) {
         const balanceKey = `${leave.leaveType}Leave`;
@@ -238,27 +246,24 @@ exports.rejectLeave = async (req, res) => {
 
     const employeeRole = leave.employeeId?.role;
     let canReject = false;
+    let rejectionStatus = '';
 
     // Check if user can reject this leave
-    if (req.user.role === 'manager') {
-      // Manager can reject employee leaves in 'applied' status
-      if (employeeRole === 'employee' && leave.status === 'applied') {
+    if (req.user.role === 'team_lead') {
+      if (employeeRole === 'employee' && leave.status === 'Pending_TeamLeader') {
         canReject = true;
+        rejectionStatus = 'Rejected_By_TeamLeader';
       }
     } else if (req.user.role === 'hr') {
-      // HR can reject employee leaves that are manager-approved
-      if (employeeRole === 'employee' && leave.status === 'manager-approved') {
+      if (leave.status === 'Pending_HR') {
         canReject = true;
+        rejectionStatus = 'Rejected_By_HR';
       }
     } else if (req.user.role === 'director') {
-      // Director can reject:
-      // 1. Employee leaves in 'hr-approved' status
-      // 2. Manager/HR leaves in 'applied' status
-      if (employeeRole === 'employee' && leave.status === 'hr-approved') {
-        canReject = true;
-      } else if ((employeeRole === 'manager' || employeeRole === 'hr') && leave.status === 'applied') {
-        canReject = true;
-      }
+       if (employeeRole === 'hr' && leave.status === 'Pending_Director') {
+         canReject = true;
+         rejectionStatus = 'Rejected_By_Director';
+       }
     }
 
     if (!canReject) {
@@ -273,7 +278,7 @@ exports.rejectLeave = async (req, res) => {
       approvedAt: new Date(),
     });
 
-    leave.status = 'rejected';
+    leave.status = rejectionStatus;
     leave.rejectionReason = comments || '';
     leave.rejectedBy = req.user.id;
     await leave.save();

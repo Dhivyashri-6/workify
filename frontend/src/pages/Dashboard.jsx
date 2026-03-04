@@ -6,17 +6,24 @@ import { leaveService, userService } from '../services/api';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 const Dashboard = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState({});
   const [leaves, setLeaves] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState({});
   const [loading, setLoading] = useState(true);
+  const [teamMembers, setTeamMembers] = useState([]);
 
   useEffect(() => {
-    fetchDashboardData();
+    refreshUser();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user]);
 
   const fetchDashboardData = async () => {
     try {
@@ -24,8 +31,18 @@ const Dashboard = () => {
       const leaveRes = await leaveService.getMyLeaves();
       setLeaves(leaveRes.data);
 
-      // Fetch pending approvals for managers, HR, and directors
-      if (user?.role === 'manager' || user?.role === 'hr' || user?.role === 'director') {
+      if (user?.role === 'team_lead') {
+        try {
+          const teamRes = await userService.getTeamMembers();
+          setTeamMembers(teamRes.data || []);
+        } catch (error) {
+          console.error('Error fetching team members:', error);
+          setTeamMembers([]); // Default to empty array on error
+        }
+      }
+
+      // Fetch pending approvals for team leads, HR, and directors
+      if (user?.role === 'hr' || user?.role === 'director') {
         try {
           const approvalsRes = await leaveService.getLeaveRequests();
           setPendingApprovals(approvalsRes.data || []);
@@ -36,9 +53,9 @@ const Dashboard = () => {
       }
 
       // Calculate stats
-      const approved = leaveRes.data.filter(l => l.status === 'director-approved').length;
-      const pending = leaveRes.data.filter(l => ['applied', 'manager-approved', 'hr-approved'].includes(l.status)).length;
-      const rejected = leaveRes.data.filter(l => l.status === 'rejected').length;
+      const approved = leaveRes.data.filter(l => l.status === 'Approved').length;
+      const pending = leaveRes.data.filter(l => l.status.startsWith('Pending')).length;
+      const rejected = leaveRes.data.filter(l => l.status.startsWith('Rejected')).length;
 
       setStats({ 
         approved, 
@@ -121,7 +138,7 @@ const Dashboard = () => {
         </div>
 
         {/* Main Statistics */}
-        <div className={`grid md:grid-cols-2 ${(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
+        <div className={`grid md:grid-cols-2 ${(user?.role === 'director' || user?.role === 'hr') ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
           <StatCard
             icon={FiCalendar}
             label="Total Applications"
@@ -150,8 +167,8 @@ const Dashboard = () => {
             color="bg-red-500"
             trend={stats.rejected > 0 ? `${stats.rejected} rejected` : "No rejections"}
           />
-          {/* Pending Approvals Card - Only for Managers, HR, and Directors */}
-          {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') && (
+          {/* Pending Approvals Card - Only for Team Leads, HR, and Directors */}
+          {(user?.role === 'director' || user?.role === 'hr') && (
             <StatCard
               icon={FiFileText}
               label="Pending Approvals"
@@ -228,12 +245,12 @@ const Dashboard = () => {
                       </p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ml-4 ${
-                      leave.status === 'director-approved' ? 'bg-green-100 text-green-800' :
-                      leave.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                      leave.status === 'applied' ? 'bg-blue-100 text-blue-800' :
-                      'bg-yellow-100 text-yellow-800'
+                      leave.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                      leave.status.startsWith('Rejected') ? 'bg-red-100 text-red-800' :
+                      leave.status.startsWith('Pending') ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-blue-100 text-blue-800'
                     }`}>
-                      {leave.status.replace('-', ' ').toUpperCase()}
+                      {leave.status.replace(/_/g, ' ')}
                     </span>
                   </div>
                 ))}
@@ -242,8 +259,8 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Pending Approvals Section - For Managers, HR, and Directors */}
-        {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') && (
+        {/* Pending Approvals Section - For Team Leads, HR, and Directors */}
+        {(user?.role === 'director' || user?.role === 'hr') && (
           <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-3">
@@ -304,12 +321,12 @@ const Dashboard = () => {
                     <div className="flex flex-col items-end gap-2 ml-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
                         leave.status === 'applied' ? 'bg-blue-100 text-blue-800' :
-                        leave.status === 'manager-approved' ? 'bg-yellow-100 text-yellow-800' :
+                        leave.status === 'teamlead-approved' ? 'bg-yellow-100 text-yellow-800' :
                         leave.status === 'hr-approved' ? 'bg-purple-100 text-purple-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
-                        {leave.status === 'applied' ? 'Awaiting Manager' :
-                         leave.status === 'manager-approved' ? 'Awaiting HR' :
+                        {leave.status === 'applied' ? 'Awaiting Team Lead' :
+                         leave.status === 'teamlead-approved' ? 'Awaiting HR' :
                          leave.status === 'hr-approved' ? 'Awaiting Director' :
                          leave.status.toUpperCase()}
                       </span>
@@ -335,7 +352,29 @@ const Dashboard = () => {
         )}
 
         {/* Info Cards */}
-        {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'manager') && (
+        {user?.role === 'team_lead' && (
+          <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <FiUsers className="text-primary" size={24} />
+              Allocated Team Members
+            </h2>
+            {teamMembers.length === 0 ? (
+              <p className="text-gray-600">No team members allocated yet.</p>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teamMembers.map(member => (
+                  <div key={member._id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="font-semibold text-gray-900">{member.name}</p>
+                    <p className="text-sm text-gray-500">{member.email}</p>
+                    <p className="text-xs text-gray-400 mt-1">{member.designation || 'Employee'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(user?.role === 'director' || user?.role === 'hr') && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 border border-purple-200">
               <FiUsers className="text-purple-600 mb-3" size={28} />

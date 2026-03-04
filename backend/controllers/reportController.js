@@ -52,9 +52,9 @@ exports.getEmployeeLeaveReport = async (req, res) => {
       leaves,
       summary: {
         totalApplied: leaves.length,
-        approved: leaves.filter(l => l.status === 'director-approved').length,
-        rejected: leaves.filter(l => l.status === 'rejected').length,
-        pending: leaves.filter(l => ['applied', 'manager-approved', 'hr-approved'].includes(l.status)).length,
+        approved: leaves.filter(l => l.status === 'Approved').length,
+        rejected: leaves.filter(l => l.status.startsWith('Rejected')).length,
+        pending: leaves.filter(l => l.status.startsWith('Pending')).length,
       },
     });
   } catch (error) {

@@ -58,10 +58,10 @@ exports.getTeamMembers = async (req, res) => {
   try {
     let query = {};
 
-    if (req.user.role === 'manager') {
+    if (req.user.role === 'team_lead') {
       query = { managerId: req.user.id };
     } else if (req.user.role === 'hr') {
-      query = { role: { $in: ['employee', 'manager'] } };
+      query = { role: { $in: ['employee', 'team_lead'] } };
     } else if (req.user.role === 'director') {
       query = { _id: { $ne: req.user.id } };
     }
@@ -80,7 +80,7 @@ exports.addUser = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const { name, email, role, department, designation, managerId } = req.body;
+    const { name, email, role, department, designation, managerId, phone } = req.body;
 
     // Generate temporary password
     const tempPassword = Math.random().toString(36).slice(-8);
@@ -93,6 +93,7 @@ exports.addUser = async (req, res) => {
       department,
       designation,
       managerId: managerId || null,
+      phone,
     });
 
     // TODO: Send email with credentials
@@ -112,7 +113,87 @@ exports.addUser = async (req, res) => {
   }
 };
 
-// Remove user (Director only)
+// Update user details (Director only)
+exports.updateUser = async (req, res) => {
+  try {
+    if (req.user.role !== 'director') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { name, email, role, department, designation, managerId, phone } = req.body;
+    
+    // Find user to update
+    let user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Update fields
+    user.name = name || user.name;
+    user.email = email || user.email;
+    user.role = role || user.role;
+    user.department = department || user.department;
+    user.designation = designation || user.designation;
+    user.phone = phone || user.phone;
+    
+    // Check if managerId is provided (could be empty string/null to remove manager)
+    if (managerId !== undefined) {
+      user.managerId = managerId || null;
+    }
+
+    await user.save();
+
+    res.json({
+      message: 'User updated successfully',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        managerId: user.managerId,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Assign team members to a team lead (Director only)
+exports.assignTeam = async (req, res) => {
+  try {
+    if (req.user.role !== 'director') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { teamLeadId, employeeIds } = req.body;
+
+    // Verify team lead exists and is actually a team lead
+    const teamLead = await User.findById(teamLeadId);
+    if (!teamLead || teamLead.role !== 'team_lead') {
+      return res.status(400).json({ message: 'Invalid team lead' });
+    }
+
+    // 1. Remove this team lead from all users who currently have them as manager
+    //    BUT are NOT in the new list (i.e. they were unchecked)
+    await User.updateMany(
+      { managerId: teamLeadId, _id: { $nin: employeeIds } },
+      { $unset: { managerId: '' } }
+    );
+
+    // 2. Add this team lead to all users in the new list
+    if (employeeIds && employeeIds.length > 0) {
+      await User.updateMany(
+        { _id: { $in: employeeIds } },
+        { managerId: teamLeadId }
+      );
+    }
+
+    res.json({ message: 'Team assignments updated successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 exports.removeUser = async (req, res) => {
   try {
     if (req.user.role !== 'director') {
