@@ -66,4 +66,34 @@ export const reportService = {
   downloadReport: (type) => apiClient.get(`/reports/download/${type}`, { responseType: 'blob' }),
 };
 
+// =====================================================
+// TIMESHEET SERVICE - Timesheet Management Module
+// =====================================================
+export const timesheetService = {
+  // Employee operations
+  createTimesheet: (data) => apiClient.post('/timesheets', data),
+  updateTimesheet: (id, data) => apiClient.put(`/timesheets/${id}`, data),
+  deleteTimesheet: (id) => apiClient.delete(`/timesheets/${id}`),
+  getMyTimesheets: (params) => apiClient.get('/timesheets/my-timesheets', { params }),
+  getTimesheetById: (id) => apiClient.get(`/timesheets/${id}`),
+  
+  // Submit for approval
+  submitTimesheet: (id) => apiClient.put(`/timesheets/${id}/submit`),
+  submitBatchTimesheets: (timesheetIds) => apiClient.put('/timesheets/submit-batch', { timesheetIds }),
+  
+  // Manager operations
+  getTeamTimesheets: (params) => apiClient.get('/timesheets/team-timesheets', { params }),
+  getPendingApprovals: () => apiClient.get('/timesheets/pending-approvals'),
+  approveTimesheet: (id, data) => apiClient.put(`/timesheets/${id}/approve`, data),
+  rejectTimesheet: (id, data) => apiClient.put(`/timesheets/${id}/reject`, data),
+  approveBatchTimesheets: (timesheetIds, comments) => 
+    apiClient.put('/timesheets/approve-batch', { timesheetIds, comments }),
+  
+  // Reports
+  getEmployeeHoursReport: (params) => apiClient.get('/timesheets/reports/employee-hours', { params }),
+  getProjectHoursReport: (params) => apiClient.get('/timesheets/reports/project-hours', { params }),
+  getWeeklySummaryReport: (params) => apiClient.get('/timesheets/reports/weekly-summary', { params }),
+  getDailySummaryReport: (params) => apiClient.get('/timesheets/reports/daily-summary', { params }),
+};
+
 export default apiClient;

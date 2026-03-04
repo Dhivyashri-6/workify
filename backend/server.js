@@ -24,6 +24,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/leaves', require('./routes/leaves'));
 app.use('/api/holidays', require('./routes/holidays'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/timesheets', require('./routes/timesheets'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

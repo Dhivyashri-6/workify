@@ -18,6 +18,12 @@ import TeamLeavesPage from './pages/TeamLeavesPage';
 import LeaveApprovalsPage from './pages/LeaveApprovalsPage';
 import ReportsPage from './pages/ReportsPage';
 
+// Timesheet Pages
+import TimesheetEntryPage from './pages/TimesheetEntryPage';
+import TimesheetHistoryPage from './pages/TimesheetHistoryPage';
+import TimesheetApprovalsPage from './pages/TimesheetApprovalsPage';
+import TimesheetReportsPage from './pages/TimesheetReportsPage';
+
 const App = () => {
   return (
     <Router>
@@ -113,6 +119,40 @@ const App = () => {
             element={
               <ProtectedRoute requiredRole="director">
                 <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Timesheet Routes */}
+          <Route
+            path="/timesheet-entry"
+            element={
+              <ProtectedRoute>
+                <TimesheetEntryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/timesheet-history"
+            element={
+              <ProtectedRoute>
+                <TimesheetHistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/timesheet-approvals"
+            element={
+              <ProtectedRoute requiredRole={['team_lead', 'hr', 'director']}>
+                <TimesheetApprovalsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/timesheet-reports"
+            element={
+              <ProtectedRoute>
+                <TimesheetReportsPage />
               </ProtectedRoute>
             }
           />

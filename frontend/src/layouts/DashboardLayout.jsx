@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiMenu, FiX, FiLogOut, FiHome, FiCalendar, FiUsers, FiSettings, FiFileText, FiUser, FiUserCheck } from 'react-icons/fi';
+import { FiMenu, FiX, FiLogOut, FiHome, FiCalendar, FiUsers, FiSettings, FiFileText, FiUser, FiUserCheck, FiClock } from 'react-icons/fi';
 import { BsBarChart } from 'react-icons/bs';
 
 const DashboardLayout = ({ children }) => {
@@ -18,10 +18,14 @@ const DashboardLayout = ({ children }) => {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: FiHome },
     user?.role !== 'director' && { path: '/leaves', label: 'Leaves', icon: FiCalendar },
+    { path: '/timesheet-entry', label: 'Timesheet', icon: FiClock },
+    { path: '/timesheet-history', label: 'Timesheet History', icon: FiClock },
     { path: '/profile', label: 'Profile', icon: FiUser },
     { path: '/holidays', label: 'Holidays', icon: FiCalendar },
     user?.role === 'team_lead' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
+    (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/timesheet-approvals', label: 'TS Approvals', icon: FiClock },
     (user?.role === 'hr' || user?.role === 'director') && { path: '/approvals', label: 'Approvals', icon: FiFileText },
+    { path: '/timesheet-reports', label: 'TS Reports', icon: BsBarChart },
     user?.role === 'director' && { path: '/admin', label: 'Admin', icon: FiUsers },
     user?.role === 'director' && { path: '/user-management', label: 'User Management', icon: FiUserCheck },
     user?.role === 'director' && { path: '/reports', label: 'Reports', icon: BsBarChart },
