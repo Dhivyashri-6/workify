@@ -24,7 +24,7 @@ const DashboardLayout = ({ children }) => {
     { path: '/holidays', label: 'Holidays', icon: FiCalendar },
     user?.role === 'team_lead' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
     (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/timesheet-approvals', label: 'TS Approvals', icon: FiClock },
-    (user?.role === 'hr' || user?.role === 'director') && { path: '/approvals', label: 'Approvals', icon: FiFileText },
+    (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/approvals', label: 'Approvals', icon: FiFileText },
     (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/timesheet-reports', label: 'TS Reports', icon: BsBarChart },
     user?.role === 'director' && { path: '/admin', label: 'Admin', icon: FiUsers },
     user?.role === 'director' && { path: '/user-management', label: 'User Management', icon: FiUserCheck },

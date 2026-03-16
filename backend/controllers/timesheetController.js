@@ -1,90 +1,225 @@
+const mongoose = require('mongoose');
 const Timesheet = require('../models/Timesheet');
 const TimesheetApproval = require('../models/TimesheetApproval');
 const User = require('../models/User');
 
-// Standard working hours constant
 const STANDARD_WORKING_HOURS = 8;
+const APPROVER_ROLES = ['team_lead', 'hr', 'director'];
 
-/**
- * Helper function to calculate hours from time strings
- * @param {string} startTime - Start time in HH:MM format
- * @param {string} endTime - End time in HH:MM format
- * @returns {number} Total hours worked
- */
 const calculateHours = (startTime, endTime) => {
   const [startHour, startMin] = startTime.split(':').map(Number);
   const [endHour, endMin] = endTime.split(':').map(Number);
-  
+
   const startMinutes = startHour * 60 + startMin;
   const endMinutes = endHour * 60 + endMin;
-  
+
   let durationMinutes = endMinutes - startMinutes;
   if (durationMinutes < 0) {
-    durationMinutes += 24 * 60; // Handle overnight work
+    durationMinutes += 24 * 60;
   }
-  
+
   return Math.round((durationMinutes / 60) * 100) / 100;
 };
 
-/**
- * Create a new timesheet entry
- * POST /api/timesheets
- */
+const getApprovalWorkflowForRole = (employeeRole) => {
+  if (employeeRole === 'employee') return ['team_lead', 'hr'];
+  if (employeeRole === 'team_lead') return ['hr'];
+  if (employeeRole === 'hr') return ['director'];
+  return [];
+};
+
+const buildTimesheetApprovalState = (employeeRole, approvalHistory = []) => {
+  const workflow = getApprovalWorkflowForRole(employeeRole);
+  const stateByRole = {
+    team_lead: 'not_required',
+    hr: 'not_required',
+    director: 'not_required',
+  };
+
+  workflow.forEach((role) => {
+    stateByRole[role] = 'pending';
+  });
+
+  approvalHistory.forEach((entry) => {
+    const role = entry?.managerId?.role;
+    if (!role || !workflow.includes(role)) return;
+
+    if (entry.status === 'Approved') {
+      stateByRole[role] = 'approved';
+    }
+
+    if (entry.status === 'Rejected') {
+      stateByRole[role] = 'rejected';
+    }
+  });
+
+  let finalDecision = 'Pending';
+  if (workflow.some((role) => stateByRole[role] === 'rejected')) {
+    finalDecision = 'Rejected';
+  } else if (workflow.length > 0 && workflow.every((role) => stateByRole[role] === 'approved')) {
+    finalDecision = 'Approved';
+  }
+
+  const nextApprover = finalDecision === 'Pending'
+    ? workflow.find((role) => stateByRole[role] === 'pending') || null
+    : null;
+
+  return {
+    workflow,
+    roles: stateByRole,
+    finalDecision,
+    nextApprover,
+  };
+};
+
+const attachApprovalState = async (timesheets) => {
+  if (!timesheets || timesheets.length === 0) return [];
+
+  const ids = timesheets.map((ts) => ts._id);
+  const approvals = await TimesheetApproval.find({ timesheetId: { $in: ids } })
+    .populate('managerId', 'name email role')
+    .sort({ actionDate: 1 });
+
+  const historyMap = approvals.reduce((acc, item) => {
+    const key = item.timesheetId.toString();
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
+  return timesheets.map((timesheetDoc) => {
+    const timesheet = timesheetDoc.toObject ? timesheetDoc.toObject() : timesheetDoc;
+    const employeeRole = timesheet.employeeId?.role || 'employee';
+    const approvalHistory = historyMap[timesheet._id.toString()] || [];
+    const approvalState = buildTimesheetApprovalState(employeeRole, approvalHistory);
+
+    return {
+      ...timesheet,
+      approvalState,
+      approvalHistory,
+    };
+  });
+};
+
+const canTeamLeadAct = (timesheet, actorId) => {
+  return timesheet.employeeId?.managerId?.toString() === actorId;
+};
+
+const processTimesheetDecision = async ({ timesheet, actor, comments = '', decision }) => {
+  if (timesheet.status !== 'Submitted') {
+    return { error: 'Only submitted timesheet entries can be reviewed' };
+  }
+
+  const approvalHistory = await TimesheetApproval.find({ timesheetId: timesheet._id })
+    .populate('managerId', 'name email role')
+    .sort({ actionDate: 1 });
+
+  const approvalState = buildTimesheetApprovalState(timesheet.employeeId?.role || 'employee', approvalHistory);
+
+  if (!APPROVER_ROLES.includes(actor.role)) {
+    return { error: 'You do not have permission to review timesheets' };
+  }
+
+  if (actor.role === 'team_lead' && !canTeamLeadAct(timesheet, actor.id)) {
+    return { error: 'You can only review timesheets from your team members' };
+  }
+
+  if (approvalState.nextApprover !== actor.role) {
+    return {
+      error: `This timesheet is currently awaiting ${approvalState.nextApprover || 'finalization'} approval`,
+    };
+  }
+
+  if (decision === 'Rejected' && !comments.trim()) {
+    return { error: 'Please provide a reason for rejection' };
+  }
+
+  const actionDate = new Date();
+
+  await TimesheetApproval.create({
+    timesheetId: timesheet._id,
+    managerId: actor.id,
+    status: decision,
+    comments: comments || '',
+    actionDate,
+  });
+
+  const updatedHistory = await TimesheetApproval.find({ timesheetId: timesheet._id })
+    .populate('managerId', 'name email role')
+    .sort({ actionDate: 1 });
+
+  const updatedState = buildTimesheetApprovalState(timesheet.employeeId?.role || 'employee', updatedHistory);
+
+  timesheet.managerComments = comments || '';
+
+  if (decision === 'Rejected' || updatedState.finalDecision === 'Rejected') {
+    timesheet.status = 'Rejected';
+    timesheet.approvedBy = actor.id;
+    timesheet.actionDate = actionDate;
+  } else if (updatedState.finalDecision === 'Approved') {
+    timesheet.status = 'Approved';
+    timesheet.approvedBy = actor.id;
+    timesheet.actionDate = actionDate;
+  } else {
+    timesheet.status = 'Submitted';
+  }
+
+  await timesheet.save();
+
+  return {
+    timesheet,
+    approvalHistory: updatedHistory,
+    approvalState: updatedState,
+  };
+};
+
 exports.createTimesheet = async (req, res) => {
   try {
     const { date, projectName, taskName, startTime, endTime, notes, status } = req.body;
 
-    // Validate required fields
     if (!date || !projectName || !taskName || !startTime || !endTime) {
-      return res.status(400).json({ 
-        message: 'Please provide all required fields: date, projectName, taskName, startTime, endTime' 
+      return res.status(400).json({
+        message: 'Please provide all required fields: date, projectName, taskName, startTime, endTime',
       });
     }
 
-    // Validate time format
     const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
       return res.status(400).json({ message: 'Invalid time format. Use HH:MM format' });
     }
 
-    // Validate that end time is greater than start time
     const totalHours = calculateHours(startTime, endTime);
     if (totalHours <= 0 || totalHours > 24) {
       return res.status(400).json({ message: 'End time must be greater than start time' });
     }
 
-    // Check for duplicate entry (same employee, date, and overlapping time)
     const existingEntry = await Timesheet.findOne({
       employeeId: req.user.id,
       date: new Date(date),
       $or: [
-        { startTime: startTime, endTime: endTime },
+        { startTime, endTime },
         {
           $and: [
             { startTime: { $lte: startTime } },
-            { endTime: { $gte: startTime } }
-          ]
+            { endTime: { $gte: startTime } },
+          ],
         },
         {
           $and: [
             { startTime: { $lte: endTime } },
-            { endTime: { $gte: endTime } }
-          ]
-        }
-      ]
+            { endTime: { $gte: endTime } },
+          ],
+        },
+      ],
     });
 
     if (existingEntry) {
-      return res.status(400).json({ 
-        message: 'A timesheet entry already exists for this time period' 
-      });
+      return res.status(400).json({ message: 'A timesheet entry already exists for this time period' });
     }
 
-    // Calculate overtime
     const isOvertime = totalHours > STANDARD_WORKING_HOURS;
     const overtimeHours = isOvertime ? totalHours - STANDARD_WORKING_HOURS : 0;
 
-    // Create the timesheet entry
     const timesheet = await Timesheet.create({
       employeeId: req.user.id,
       date: new Date(date),
@@ -99,44 +234,31 @@ exports.createTimesheet = async (req, res) => {
       overtimeHours,
     });
 
-    res.status(201).json({ 
-      message: 'Timesheet entry created successfully', 
-      timesheet 
-    });
+    res.status(201).json({ message: 'Timesheet entry created successfully', timesheet });
   } catch (error) {
     console.error('Create timesheet error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Update an existing timesheet entry
- * PUT /api/timesheets/:id
- */
 exports.updateTimesheet = async (req, res) => {
   try {
     const { id } = req.params;
     const { date, projectName, taskName, startTime, endTime, notes } = req.body;
 
-    // Find the timesheet
     const timesheet = await Timesheet.findById(id);
     if (!timesheet) {
       return res.status(404).json({ message: 'Timesheet entry not found' });
     }
 
-    // Check ownership
     if (timesheet.employeeId.toString() !== req.user.id) {
       return res.status(403).json({ message: 'You can only update your own timesheet entries' });
     }
 
-    // Only Draft entries can be updated
     if (timesheet.status !== 'Draft') {
-      return res.status(400).json({ 
-        message: 'Only draft timesheet entries can be updated' 
-      });
+      return res.status(400).json({ message: 'Only draft timesheet entries can be updated' });
     }
 
-    // Validate time format if provided
     const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (startTime && !timeRegex.test(startTime)) {
       return res.status(400).json({ message: 'Invalid start time format' });
@@ -145,7 +267,6 @@ exports.updateTimesheet = async (req, res) => {
       return res.status(400).json({ message: 'Invalid end time format' });
     }
 
-    // Calculate new total hours if times are updated
     const newStartTime = startTime || timesheet.startTime;
     const newEndTime = endTime || timesheet.endTime;
     const totalHours = calculateHours(newStartTime, newEndTime);
@@ -154,7 +275,6 @@ exports.updateTimesheet = async (req, res) => {
       return res.status(400).json({ message: 'End time must be greater than start time' });
     }
 
-    // Update fields
     timesheet.date = date ? new Date(date) : timesheet.date;
     timesheet.projectName = projectName || timesheet.projectName;
     timesheet.taskName = taskName || timesheet.taskName;
@@ -174,10 +294,6 @@ exports.updateTimesheet = async (req, res) => {
   }
 };
 
-/**
- * Delete a timesheet entry
- * DELETE /api/timesheets/:id
- */
 exports.deleteTimesheet = async (req, res) => {
   try {
     const { id } = req.params;
@@ -187,16 +303,12 @@ exports.deleteTimesheet = async (req, res) => {
       return res.status(404).json({ message: 'Timesheet entry not found' });
     }
 
-    // Check ownership
     if (timesheet.employeeId.toString() !== req.user.id) {
       return res.status(403).json({ message: 'You can only delete your own timesheet entries' });
     }
 
-    // Only Draft entries can be deleted
     if (timesheet.status !== 'Draft') {
-      return res.status(400).json({ 
-        message: 'Only draft timesheet entries can be deleted' 
-      });
+      return res.status(400).json({ message: 'Only draft timesheet entries can be deleted' });
     }
 
     await Timesheet.findByIdAndDelete(id);
@@ -208,10 +320,6 @@ exports.deleteTimesheet = async (req, res) => {
   }
 };
 
-/**
- * Submit a timesheet entry for approval
- * PUT /api/timesheets/:id/submit
- */
 exports.submitTimesheet = async (req, res) => {
   try {
     const { id } = req.params;
@@ -221,16 +329,12 @@ exports.submitTimesheet = async (req, res) => {
       return res.status(404).json({ message: 'Timesheet entry not found' });
     }
 
-    // Check ownership
     if (timesheet.employeeId.toString() !== req.user.id) {
       return res.status(403).json({ message: 'You can only submit your own timesheet entries' });
     }
 
-    // Only Draft entries can be submitted
     if (timesheet.status !== 'Draft') {
-      return res.status(400).json({ 
-        message: 'Only draft timesheet entries can be submitted' 
-      });
+      return res.status(400).json({ message: 'Only draft timesheet entries can be submitted' });
     }
 
     timesheet.status = 'Submitted';
@@ -243,10 +347,6 @@ exports.submitTimesheet = async (req, res) => {
   }
 };
 
-/**
- * Submit multiple timesheet entries for approval (batch submit)
- * PUT /api/timesheets/submit-batch
- */
 exports.submitBatchTimesheets = async (req, res) => {
   try {
     const { timesheetIds } = req.body;
@@ -255,7 +355,6 @@ exports.submitBatchTimesheets = async (req, res) => {
       return res.status(400).json({ message: 'Please provide an array of timesheet IDs' });
     }
 
-    // Update all draft timesheets belonging to the user
     const result = await Timesheet.updateMany(
       {
         _id: { $in: timesheetIds },
@@ -267,7 +366,7 @@ exports.submitBatchTimesheets = async (req, res) => {
       }
     );
 
-    res.json({ 
+    res.json({
       message: `${result.modifiedCount} timesheet(s) submitted for approval`,
       modifiedCount: result.modifiedCount,
     });
@@ -277,133 +376,78 @@ exports.submitBatchTimesheets = async (req, res) => {
   }
 };
 
-/**
- * Approve a timesheet entry (Manager only)
- * PUT /api/timesheets/:id/approve
- */
 exports.approveTimesheet = async (req, res) => {
   try {
     const { id } = req.params;
     const { comments } = req.body;
 
-    // Check if user has approval rights
-    if (!['team_lead', 'hr', 'director'].includes(req.user.role)) {
-      return res.status(403).json({ message: 'You do not have permission to approve timesheets' });
-    }
-
-    const timesheet = await Timesheet.findById(id).populate('employeeId', 'name email managerId');
+    const timesheet = await Timesheet.findById(id).populate('employeeId', 'name email role managerId');
     if (!timesheet) {
       return res.status(404).json({ message: 'Timesheet entry not found' });
     }
 
-    // Only Submitted entries can be approved
-    if (timesheet.status !== 'Submitted') {
-      return res.status(400).json({ 
-        message: 'Only submitted timesheet entries can be approved' 
-      });
-    }
-
-    // Team leads can only approve their team members' timesheets
-    if (req.user.role === 'team_lead') {
-      if (timesheet.employeeId.managerId?.toString() !== req.user.id) {
-        return res.status(403).json({ 
-          message: 'You can only approve timesheets from your team members' 
-        });
-      }
-    }
-
-    // Update timesheet status
-    timesheet.status = 'Approved';
-    timesheet.managerComments = comments || '';
-    timesheet.approvedBy = req.user.id;
-    timesheet.actionDate = new Date();
-    await timesheet.save();
-
-    // Create approval record
-    await TimesheetApproval.create({
-      timesheetId: id,
-      managerId: req.user.id,
-      status: 'Approved',
+    const decision = await processTimesheetDecision({
+      timesheet,
+      actor: req.user,
       comments: comments || '',
+      decision: 'Approved',
     });
 
-    res.json({ message: 'Timesheet approved successfully', timesheet });
+    if (decision.error) {
+      return res.status(403).json({ message: decision.error });
+    }
+
+    res.json({
+      message: decision.timesheet.status === 'Approved'
+        ? 'Timesheet approved successfully'
+        : 'Approval recorded. Timesheet moved to the next approver.',
+      timesheet: decision.timesheet,
+      approvalState: decision.approvalState,
+    });
   } catch (error) {
     console.error('Approve timesheet error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Reject a timesheet entry (Manager only)
- * PUT /api/timesheets/:id/reject
- */
 exports.rejectTimesheet = async (req, res) => {
   try {
     const { id } = req.params;
     const { comments } = req.body;
 
-    // Check if user has approval rights
-    if (!['team_lead', 'hr', 'director'].includes(req.user.role)) {
-      return res.status(403).json({ message: 'You do not have permission to reject timesheets' });
-    }
-
-    if (!comments || comments.trim() === '') {
-      return res.status(400).json({ message: 'Please provide a reason for rejection' });
-    }
-
-    const timesheet = await Timesheet.findById(id).populate('employeeId', 'name email managerId');
+    const timesheet = await Timesheet.findById(id).populate('employeeId', 'name email role managerId');
     if (!timesheet) {
       return res.status(404).json({ message: 'Timesheet entry not found' });
     }
 
-    // Only Submitted entries can be rejected
-    if (timesheet.status !== 'Submitted') {
-      return res.status(400).json({ 
-        message: 'Only submitted timesheet entries can be rejected' 
-      });
-    }
-
-    // Team leads can only reject their team members' timesheets
-    if (req.user.role === 'team_lead') {
-      if (timesheet.employeeId.managerId?.toString() !== req.user.id) {
-        return res.status(403).json({ 
-          message: 'You can only reject timesheets from your team members' 
-        });
-      }
-    }
-
-    // Update timesheet status
-    timesheet.status = 'Rejected';
-    timesheet.managerComments = comments;
-    timesheet.approvedBy = req.user.id;
-    timesheet.actionDate = new Date();
-    await timesheet.save();
-
-    // Create approval record
-    await TimesheetApproval.create({
-      timesheetId: id,
-      managerId: req.user.id,
-      status: 'Rejected',
-      comments: comments,
+    const decision = await processTimesheetDecision({
+      timesheet,
+      actor: req.user,
+      comments: comments || '',
+      decision: 'Rejected',
     });
 
-    res.json({ message: 'Timesheet rejected', timesheet });
+    if (decision.error) {
+      const statusCode = decision.error.includes('reason for rejection') ? 400 : 403;
+      return res.status(statusCode).json({ message: decision.error });
+    }
+
+    res.json({
+      message: 'Timesheet rejected',
+      timesheet: decision.timesheet,
+      approvalState: decision.approvalState,
+    });
   } catch (error) {
     console.error('Reject timesheet error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Approve multiple timesheet entries (batch approve)
- * PUT /api/timesheets/approve-batch
- */
 exports.approveBatchTimesheets = async (req, res) => {
   try {
     const { timesheetIds, comments } = req.body;
 
-    if (!['team_lead', 'hr', 'director'].includes(req.user.role)) {
+    if (!APPROVER_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: 'You do not have permission to approve timesheets' });
     }
 
@@ -411,41 +455,33 @@ exports.approveBatchTimesheets = async (req, res) => {
       return res.status(400).json({ message: 'Please provide an array of timesheet IDs' });
     }
 
-    // For team leads, verify they can only approve their team's timesheets
-    let query = {
+    const timesheets = await Timesheet.find({
       _id: { $in: timesheetIds },
       status: 'Submitted',
-    };
+    }).populate('employeeId', 'name email role managerId');
 
-    if (req.user.role === 'team_lead') {
-      const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      query.employeeId = { $in: teamMemberIds };
+    let modifiedCount = 0;
+    const skipped = [];
+
+    for (const timesheet of timesheets) {
+      const result = await processTimesheetDecision({
+        timesheet,
+        actor: req.user,
+        comments: comments || '',
+        decision: 'Approved',
+      });
+
+      if (result.error) {
+        skipped.push({ timesheetId: timesheet._id, reason: result.error });
+      } else {
+        modifiedCount += 1;
+      }
     }
 
-    const result = await Timesheet.updateMany(query, {
-      $set: {
-        status: 'Approved',
-        managerComments: comments || '',
-        approvedBy: req.user.id,
-        actionDate: new Date(),
-      },
-    });
-
-    // Create approval records
-    const timesheets = await Timesheet.find({ _id: { $in: timesheetIds }, status: 'Approved' });
-    await Promise.all(timesheets.map(ts => 
-      TimesheetApproval.create({
-        timesheetId: ts._id,
-        managerId: req.user.id,
-        status: 'Approved',
-        comments: comments || '',
-      })
-    ));
-
-    res.json({ 
-      message: `${result.modifiedCount} timesheet(s) approved`,
-      modifiedCount: result.modifiedCount,
+    res.json({
+      message: `${modifiedCount} timesheet(s) approved`,
+      modifiedCount,
+      skipped,
     });
   } catch (error) {
     console.error('Batch approve error:', error);
@@ -453,17 +489,12 @@ exports.approveBatchTimesheets = async (req, res) => {
   }
 };
 
-/**
- * Get timesheets for the logged-in employee
- * GET /api/timesheets/my-timesheets
- */
 exports.getMyTimesheets = async (req, res) => {
   try {
     const { startDate, endDate, status, page = 1, limit = 50 } = req.query;
 
-    let query = { employeeId: req.user.id };
+    const query = { employeeId: req.user.id };
 
-    // Filter by date range
     if (startDate && endDate) {
       query.date = {
         $gte: new Date(startDate),
@@ -475,28 +506,28 @@ exports.getMyTimesheets = async (req, res) => {
       query.date = { $lte: new Date(endDate) };
     }
 
-    // Filter by status
     if (status && ['Draft', 'Submitted', 'Approved', 'Rejected'].includes(status)) {
       query.status = status;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
-    const timesheets = await Timesheet.find(query)
-      .populate('employeeId', 'name email')
+    const timesheetDocs = await Timesheet.find(query)
+      .populate('employeeId', 'name email role managerId')
       .populate('approvedBy', 'name email')
       .sort({ date: -1, startTime: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit, 10));
 
+    const timesheets = await attachApprovalState(timesheetDocs);
     const total = await Timesheet.countDocuments(query);
 
     res.json({
       timesheets,
       pagination: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit)),
+        page: parseInt(page, 10),
+        pages: Math.ceil(total / parseInt(limit, 10)),
       },
     });
   } catch (error) {
@@ -505,39 +536,31 @@ exports.getMyTimesheets = async (req, res) => {
   }
 };
 
-/**
- * Get timesheets for manager approval (team timesheets)
- * GET /api/timesheets/team-timesheets
- */
 exports.getTeamTimesheets = async (req, res) => {
   try {
     const { startDate, endDate, status, employeeId, page = 1, limit = 50 } = req.query;
 
-    // Check if user has approval rights
-    if (!['team_lead', 'hr', 'director'].includes(req.user.role)) {
+    if (!APPROVER_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    let query = {};
+    const query = {};
 
-    // Team leads can only see their team members' timesheets
     if (req.user.role === 'team_lead') {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      
+      const teamMemberIds = teamMembers.map((m) => m._id);
+
       if (teamMemberIds.length === 0) {
         return res.json({ timesheets: [], pagination: { total: 0, page: 1, pages: 0 } });
       }
-      
+
       query.employeeId = { $in: teamMemberIds };
     }
 
-    // Filter by specific employee (for managers)
     if (employeeId) {
       query.employeeId = employeeId;
     }
 
-    // Filter by date range
     if (startDate && endDate) {
       query.date = {
         $gte: new Date(startDate),
@@ -549,28 +572,28 @@ exports.getTeamTimesheets = async (req, res) => {
       query.date = { $lte: new Date(endDate) };
     }
 
-    // Filter by status
     if (status && ['Draft', 'Submitted', 'Approved', 'Rejected'].includes(status)) {
       query.status = status;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
-    const timesheets = await Timesheet.find(query)
-      .populate('employeeId', 'name email department')
+    const timesheetDocs = await Timesheet.find(query)
+      .populate('employeeId', 'name email department role managerId')
       .populate('approvedBy', 'name email')
       .sort({ date: -1, startTime: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit, 10));
 
+    const timesheets = await attachApprovalState(timesheetDocs);
     const total = await Timesheet.countDocuments(query);
 
     res.json({
       timesheets,
       pagination: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit)),
+        page: parseInt(page, 10),
+        pages: Math.ceil(total / parseInt(limit, 10)),
       },
     });
   } catch (error) {
@@ -579,92 +602,82 @@ exports.getTeamTimesheets = async (req, res) => {
   }
 };
 
-/**
- * Get pending timesheets for approval
- * GET /api/timesheets/pending-approvals
- */
 exports.getPendingApprovals = async (req, res) => {
   try {
-    // Check if user has approval rights
-    if (!['team_lead', 'hr', 'director'].includes(req.user.role)) {
+    if (!APPROVER_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    let query = { status: 'Submitted' };
+    const query = { status: 'Submitted' };
 
-    // Team leads can only see their team members' timesheets
     if (req.user.role === 'team_lead') {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      
+      const teamMemberIds = teamMembers.map((m) => m._id);
+
       if (teamMemberIds.length === 0) {
         return res.json([]);
       }
-      
+
       query.employeeId = { $in: teamMemberIds };
     }
 
-    const timesheets = await Timesheet.find(query)
-      .populate('employeeId', 'name email department')
+    const timesheetDocs = await Timesheet.find(query)
+      .populate('employeeId', 'name email department role managerId')
       .sort({ date: -1 });
 
-    res.json(timesheets);
+    const enriched = await attachApprovalState(timesheetDocs);
+    const pendingForCurrentRole = enriched.filter(
+      (item) => item.approvalState?.nextApprover === req.user.role
+    );
+
+    res.json(pendingForCurrentRole);
   } catch (error) {
     console.error('Get pending approvals error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Get timesheet by ID
- * GET /api/timesheets/:id
- */
 exports.getTimesheetById = async (req, res) => {
   try {
     const { id } = req.params;
 
     const timesheet = await Timesheet.findById(id)
-      .populate('employeeId', 'name email department')
+      .populate('employeeId', 'name email department role managerId')
       .populate('approvedBy', 'name email');
 
     if (!timesheet) {
       return res.status(404).json({ message: 'Timesheet entry not found' });
     }
 
-    // Check access rights
     const isOwner = timesheet.employeeId._id.toString() === req.user.id;
-    const isManager = ['team_lead', 'hr', 'director'].includes(req.user.role);
+    const isManager = APPROVER_ROLES.includes(req.user.role);
 
     if (!isOwner && !isManager) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Get approval history
     const approvalHistory = await TimesheetApproval.find({ timesheetId: id })
-      .populate('managerId', 'name email')
+      .populate('managerId', 'name email role')
       .sort({ actionDate: -1 });
 
-    res.json({ timesheet, approvalHistory });
+    const approvalState = buildTimesheetApprovalState(timesheet.employeeId?.role || 'employee', approvalHistory);
+
+    res.json({ timesheet, approvalHistory, approvalState });
   } catch (error) {
     console.error('Get timesheet by ID error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Get timesheet reports - Total hours by employee
- * GET /api/timesheets/reports/employee-hours
- */
 exports.getEmployeeHoursReport = async (req, res) => {
   try {
     const { startDate, endDate, employeeId } = req.query;
 
-    // Validate date range
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'Please provide startDate and endDate' });
     }
 
-    let matchQuery = {
+    const matchQuery = {
       date: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
@@ -672,18 +685,16 @@ exports.getEmployeeHoursReport = async (req, res) => {
       status: 'Approved',
     };
 
-    // Filter by employee for managers or self for employees
     if (employeeId) {
       matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
     } else if (req.user.role === 'employee') {
       matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
     }
 
-    // Team leads can only see their team's reports
     if (req.user.role === 'team_lead' && !employeeId) {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      const teamMemberIds = teamMembers.map((m) => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id));
       matchQuery.employeeId = { $in: teamMemberIds };
     }
 
@@ -727,20 +738,15 @@ exports.getEmployeeHoursReport = async (req, res) => {
   }
 };
 
-/**
- * Get timesheet reports - Project-wise hours
- * GET /api/timesheets/reports/project-hours
- */
 exports.getProjectHoursReport = async (req, res) => {
   try {
     const { startDate, endDate, employeeId } = req.query;
 
-    // Validate date range
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'Please provide startDate and endDate' });
     }
 
-    let matchQuery = {
+    const matchQuery = {
       date: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
@@ -748,18 +754,16 @@ exports.getProjectHoursReport = async (req, res) => {
       status: 'Approved',
     };
 
-    // Apply employee filter for employees or specific requests
     if (employeeId) {
       matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
     } else if (req.user.role === 'employee') {
       matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
     }
 
-    // Team leads can only see their team's project reports
     if (req.user.role === 'team_lead' && !employeeId) {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      const teamMemberIds = teamMembers.map((m) => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id));
       matchQuery.employeeId = { $in: teamMemberIds };
     }
 
@@ -793,20 +797,15 @@ exports.getProjectHoursReport = async (req, res) => {
   }
 };
 
-/**
- * Get weekly summary report
- * GET /api/timesheets/reports/weekly-summary
- */
 exports.getWeeklySummaryReport = async (req, res) => {
   try {
     const { startDate, endDate, employeeId } = req.query;
 
-    // Validate date range
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'Please provide startDate and endDate' });
     }
 
-    let matchQuery = {
+    const matchQuery = {
       date: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
@@ -820,11 +819,10 @@ exports.getWeeklySummaryReport = async (req, res) => {
       matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
     }
 
-    // Team leads can only see their team's weekly summary
     if (req.user.role === 'team_lead' && !employeeId) {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      const teamMemberIds = teamMembers.map((m) => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id));
       matchQuery.employeeId = { $in: teamMemberIds };
     }
 
@@ -864,10 +862,6 @@ exports.getWeeklySummaryReport = async (req, res) => {
   }
 };
 
-/**
- * Get daily summary for an employee
- * GET /api/timesheets/reports/daily-summary
- */
 exports.getDailySummaryReport = async (req, res) => {
   try {
     const { date, employeeId } = req.query;
@@ -879,7 +873,7 @@ exports.getDailySummaryReport = async (req, res) => {
     const targetEmployeeId = employeeId || req.user.id;
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);
-    
+
     const nextDate = new Date(targetDate);
     nextDate.setDate(nextDate.getDate() + 1);
 
@@ -909,20 +903,15 @@ exports.getDailySummaryReport = async (req, res) => {
   }
 };
 
-/**
- * Get employee weekly summary report - Breakdown by employee with weekly hours
- * GET /api/timesheets/reports/employee-weekly-summary
- */
 exports.getEmployeeWeeklySummaryReport = async (req, res) => {
   try {
     const { startDate, endDate, employeeId } = req.query;
 
-    // Validate date range
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'Please provide startDate and endDate' });
     }
 
-    let matchQuery = {
+    const matchQuery = {
       date: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
@@ -930,18 +919,16 @@ exports.getEmployeeWeeklySummaryReport = async (req, res) => {
       status: 'Approved',
     };
 
-    // Filter by specific employee if provided
     if (employeeId) {
       matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
     } else if (req.user.role === 'employee') {
       matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
     }
 
-    // Team leads can only see their team's reports
     if (req.user.role === 'team_lead' && !employeeId) {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
-      const teamMemberIds = teamMembers.map(m => m._id);
-      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      const teamMemberIds = teamMembers.map((m) => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id));
       matchQuery.employeeId = { $in: teamMemberIds };
     }
 
@@ -1007,8 +994,7 @@ exports.getEmployeeWeeklySummaryReport = async (req, res) => {
       { $sort: { totalHours: -1 } },
     ]);
 
-    // Sort weekly breakdown within each employee
-    report.forEach(emp => {
+    report.forEach((emp) => {
       emp.weeklyBreakdown.sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year;
         return b.week - a.week;
@@ -1021,6 +1007,3 @@ exports.getEmployeeWeeklySummaryReport = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-// Import mongoose for ObjectId conversion in aggregations
-const mongoose = require('mongoose');

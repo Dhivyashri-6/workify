@@ -39,6 +39,16 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User',
   },
+  hourlyRate: {
+    type: Number,
+    default: 25,
+    min: 0,
+  },
+  overtimeMultiplier: {
+    type: Number,
+    default: 1.5,
+    min: 1,
+  },
   leaveBalance: {
     casualLeave: { type: Number, default: 12 },
     sickLeave: { type: Number, default: 10 },

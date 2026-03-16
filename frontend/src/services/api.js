@@ -67,6 +67,10 @@ export const reportService = {
   getLeaveReport: () => apiClient.get('/reports/leaves'),
   getEmployeeLeaveReport: (employeeId) => apiClient.get(`/reports/employee/${employeeId}`),
   downloadReport: (type) => apiClient.get(`/reports/download/${type}`, { responseType: 'blob' }),
+  downloadLeavesByDateRange: (params) => apiClient.get('/reports/download/leaves/range', { params, responseType: 'blob' }),
+  downloadTimesheetsByDateRange: (params) => apiClient.get('/reports/download/timesheets/range', { params, responseType: 'blob' }),
+  getPayrollReport: (params) => apiClient.get('/reports/payroll', { params }),
+  downloadPayrollByDateRange: (params) => apiClient.get('/reports/download/payroll/range', { params, responseType: 'blob' }),
 };
 
 // =====================================================

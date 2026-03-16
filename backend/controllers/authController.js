@@ -55,7 +55,7 @@ exports.login = async (req, res) => {
     }
 
     // Check user
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select('+password').populate('managerId', 'name email role');
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -77,6 +77,9 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role,
         leaveBalance: user.leaveBalance,
+        managerId: user.managerId || null,
+        hourlyRate: user.hourlyRate,
+        overtimeMultiplier: user.overtimeMultiplier,
       },
     });
   } catch (error) {
@@ -87,7 +90,7 @@ exports.login = async (req, res) => {
 // Get current user
 exports.getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).populate('managerId', 'name email role');
     res.json(user);
   } catch (error) {
     res.status(500).json({ message: error.message });

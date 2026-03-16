@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FiCalendar, FiAlertCircle, FiCheckCircle, FiTrendingUp, FiUsers, FiClock, FiFileText } from 'react-icons/fi';
-import { leaveService, userService } from '../services/api';
+import { leaveService, userService, reportService } from '../services/api';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 const Dashboard = () => {
@@ -15,6 +15,19 @@ const Dashboard = () => {
   const [leaveBalanceStats, setLeaveBalanceStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [payrollData, setPayrollData] = useState([]);
+  const [payrollTotals, setPayrollTotals] = useState(null);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [reportRoleFilter, setReportRoleFilter] = useState('all');
+  const [reportEmployeeId, setReportEmployeeId] = useState('');
+  const [reportRange, setReportRange] = useState(() => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    return {
+      startDate: firstDay.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0],
+    };
+  });
 
   useEffect(() => {
     refreshUser();
@@ -40,7 +53,7 @@ const Dashboard = () => {
         console.error('Error fetching leave balance stats:', error);
       }
 
-      if (user?.role === 'team_lead') {
+      if (['team_lead', 'hr', 'director'].includes(user?.role)) {
         try {
           const teamRes = await userService.getTeamMembers();
           setTeamMembers(teamRes.data || []);
@@ -51,7 +64,7 @@ const Dashboard = () => {
       }
 
       // Fetch pending approvals for team leads, HR, and directors
-      if (user?.role === 'hr' || user?.role === 'director') {
+      if (['team_lead', 'hr', 'director'].includes(user?.role)) {
         try {
           const approvalsRes = await leaveService.getLeaveRequests();
           setPendingApprovals(approvalsRes.data || []);
@@ -84,6 +97,85 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  const fetchPayrollSummary = async () => {
+    if (!user || !reportRange.startDate || !reportRange.endDate) return;
+
+    setPayrollLoading(true);
+    try {
+      const params = {
+        startDate: reportRange.startDate,
+        endDate: reportRange.endDate,
+      };
+
+      if (user.role !== 'director') {
+        params.employeeId = user._id || user.id;
+      } else {
+        if (reportRoleFilter !== 'all') params.role = reportRoleFilter;
+        if (reportEmployeeId) params.employeeId = reportEmployeeId;
+      }
+
+      const response = await reportService.getPayrollReport(params);
+      setPayrollData(response.data?.payroll || []);
+      setPayrollTotals(response.data?.totals || null);
+    } catch (error) {
+      console.error('Error fetching payroll summary:', error);
+      setPayrollData([]);
+      setPayrollTotals(null);
+    } finally {
+      setPayrollLoading(false);
+    }
+  };
+
+  const triggerCsvDownload = (blobData, fileName) => {
+    const url = window.URL.createObjectURL(new Blob([blobData]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = async (type) => {
+    try {
+      const params = {
+        startDate: reportRange.startDate,
+        endDate: reportRange.endDate,
+      };
+
+      if (user.role !== 'director') {
+        params.employeeId = user._id || user.id;
+      } else {
+        if (reportRoleFilter !== 'all') params.role = reportRoleFilter;
+        if (reportEmployeeId) params.employeeId = reportEmployeeId;
+      }
+
+      const datePart = `${reportRange.startDate}_to_${reportRange.endDate}`;
+
+      if (type === 'leaves') {
+        const response = await reportService.downloadLeavesByDateRange(params);
+        triggerCsvDownload(response.data, `leaves_${datePart}.csv`);
+      }
+
+      if (type === 'timesheets') {
+        const response = await reportService.downloadTimesheetsByDateRange(params);
+        triggerCsvDownload(response.data, `timesheets_${datePart}.csv`);
+      }
+
+      if (type === 'payroll') {
+        const response = await reportService.downloadPayrollByDateRange(params);
+        triggerCsvDownload(response.data, `payroll_${datePart}.csv`);
+      }
+    } catch (error) {
+      alert(error?.response?.data?.message || `Error downloading ${type} report`);
+    }
+  };
+
+  useEffect(() => {
+    fetchPayrollSummary();
+  }, [user, reportRange.startDate, reportRange.endDate, reportRoleFilter, reportEmployeeId]);
 
   const StatCard = ({ icon: Icon, label, value, color, trend }) => (
     <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all border border-gray-100 p-6">
@@ -141,13 +233,18 @@ const Dashboard = () => {
               <h1 className="text-4xl font-bold mb-2">Welcome back, {user?.name}! 👋</h1>
               <p className="text-blue-100">Manage your leaves, view analytics, and track your team's performance</p>
               <p className="text-blue-200 text-sm mt-2">Role: <span className="font-semibold capitalize">{user?.role}</span></p>
+              {user?.role === 'employee' && user?.managerId?.name && (
+                <p className="text-blue-200 text-sm mt-1">
+                  Team Lead: <span className="font-semibold">{user.managerId.name}</span>
+                </p>
+              )}
             </div>
             <div className="text-6xl opacity-20">📊</div>
           </div>
         </div>
 
         {/* Main Statistics */}
-        <div className={`grid md:grid-cols-2 ${(user?.role === 'director' || user?.role === 'hr') ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
+        <div className={`grid md:grid-cols-2 ${(user?.role === 'director' || user?.role === 'hr' || user?.role === 'team_lead') ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
           <StatCard
             icon={FiCalendar}
             label="Total Applications"
@@ -177,7 +274,7 @@ const Dashboard = () => {
             trend={stats.rejected > 0 ? `${stats.rejected} rejected` : "No rejections"}
           />
           {/* Pending Approvals Card - Only for Team Leads, HR, and Directors */}
-          {(user?.role === 'director' || user?.role === 'hr') && (
+          {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'team_lead') && (
             <StatCard
               icon={FiFileText}
               label="Pending Approvals"
@@ -278,7 +375,7 @@ const Dashboard = () => {
         </div>
 
         {/* Pending Approvals Section - For Team Leads, HR, and Directors */}
-        {(user?.role === 'director' || user?.role === 'hr') && (
+        {(user?.role === 'director' || user?.role === 'hr' || user?.role === 'team_lead') && (
           <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-3">
@@ -338,14 +435,14 @@ const Dashboard = () => {
                     </div>
                     <div className="flex flex-col items-end gap-2 ml-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
-                        leave.status === 'applied' ? 'bg-blue-100 text-blue-800' :
-                        leave.status === 'teamlead-approved' ? 'bg-yellow-100 text-yellow-800' :
-                        leave.status === 'hr-approved' ? 'bg-purple-100 text-purple-800' :
+                        leave.status === 'Pending_TeamLeader' ? 'bg-blue-100 text-blue-800' :
+                        leave.status === 'Pending_HR' ? 'bg-yellow-100 text-yellow-800' :
+                        leave.status === 'Pending_Director' ? 'bg-purple-100 text-purple-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
-                        {leave.status === 'applied' ? 'Awaiting Team Lead' :
-                         leave.status === 'teamlead-approved' ? 'Awaiting HR' :
-                         leave.status === 'hr-approved' ? 'Awaiting Director' :
+                        {leave.status === 'Pending_TeamLeader' ? 'Awaiting Team Lead' :
+                         leave.status === 'Pending_HR' ? 'Awaiting HR' :
+                         leave.status === 'Pending_Director' ? 'Awaiting Director' :
                          leave.status.toUpperCase()}
                       </span>
                       <span className="text-xs text-orange-600 font-semibold">
@@ -368,6 +465,108 @@ const Dashboard = () => {
             )}
           </div>
         )}
+
+        {/* Report Filters */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6 space-y-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Report Filters</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {user?.role === 'director'
+                  ? 'Download reports for yourself, employees, team leads, and HR between selected dates.'
+                  : 'Select date range for your leaves, timesheets, and payroll reports.'}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                type="date"
+                value={reportRange.startDate}
+                onChange={(e) => setReportRange((prev) => ({ ...prev, startDate: e.target.value }))}
+                className="input-field py-2"
+              />
+              <input
+                type="date"
+                value={reportRange.endDate}
+                onChange={(e) => setReportRange((prev) => ({ ...prev, endDate: e.target.value }))}
+                className="input-field py-2"
+              />
+            </div>
+          </div>
+
+          {user?.role === 'director' && (
+            <div className="grid md:grid-cols-2 gap-3">
+              <select
+                value={reportRoleFilter}
+                onChange={(e) => {
+                  setReportRoleFilter(e.target.value);
+                  setReportEmployeeId('');
+                }}
+                className="input-field py-2"
+              >
+                <option value="all">All Roles</option>
+                <option value="employee">Employees</option>
+                <option value="team_lead">Team Leads</option>
+                <option value="hr">HR</option>
+                <option value="director">Directors</option>
+              </select>
+              <select
+                value={reportEmployeeId}
+                onChange={(e) => setReportEmployeeId(e.target.value)}
+                className="input-field py-2"
+              >
+                <option value="">All Matching Users</option>
+                {teamMembers
+                  .filter((member) => reportRoleFilter === 'all' || member.role === reportRoleFilter)
+                  .map((member) => (
+                    <option key={member._id} value={member._id}>
+                      {member.name} ({member.role})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Download Reports */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6 space-y-4">
+          <h2 className="text-xl font-bold text-gray-900">Download Reports</h2>
+          <p className="text-sm text-gray-600">Download reports for the selected date range.</p>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => handleDownload('leaves')} className="btn-secondary">
+              Download Leaves Report
+            </button>
+            <button onClick={() => handleDownload('timesheets')} className="btn-secondary">
+              Download Timesheet Report
+            </button>
+            <button onClick={() => handleDownload('payroll')} className="btn-primary">
+              Download Payroll Report
+            </button>
+          </div>
+        </div>
+
+        {/* Payroll Section */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-100 p-6 space-y-4">
+          <h2 className="text-xl font-bold text-gray-900">Payroll</h2>
+          <p className="text-sm text-gray-600">Payroll summary based on approved timesheets, paid leaves, and unpaid leaves.</p>
+          {payrollLoading ? (
+            <p className="text-sm text-gray-500">Calculating payroll...</p>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                <p className="text-sm text-green-700 font-medium">Gross Pay</p>
+                <p className="text-2xl font-bold text-green-800">{payrollTotals?.grossPay?.toFixed?.(2) || '0.00'}</p>
+              </div>
+              <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-sm text-red-700 font-medium">Unpaid Leave Deduction</p>
+                <p className="text-2xl font-bold text-red-800">{payrollTotals?.unpaidDeduction?.toFixed?.(2) || '0.00'}</p>
+              </div>
+              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-sm text-blue-700 font-medium">Net Pay</p>
+                <p className="text-2xl font-bold text-blue-800">{payrollTotals?.netPay?.toFixed?.(2) || '0.00'}</p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Info Cards */}
         {user?.role === 'team_lead' && (

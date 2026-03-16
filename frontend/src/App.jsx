@@ -109,7 +109,7 @@ const App = () => {
           <Route
             path="/approvals"
             element={
-              <ProtectedRoute requiredRole={['hr', 'director']}>
+              <ProtectedRoute requiredRole={['team_lead', 'hr', 'director']}>
                 <LeaveApprovalsPage />
               </ProtectedRoute>
             }

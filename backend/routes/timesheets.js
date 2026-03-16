@@ -89,9 +89,4 @@ router.put('/:id/approve', auth, authorize('team_lead', 'hr', 'director'), appro
 // Reject a timesheet
 router.put('/:id/reject', auth, authorize('team_lead', 'hr', 'director'), rejectTimesheet);
 
-module.exports = router;;
-
-// Get daily summary report
-router.get('/reports/daily-summary', auth, getDailySummaryReport);
-
 module.exports = router;

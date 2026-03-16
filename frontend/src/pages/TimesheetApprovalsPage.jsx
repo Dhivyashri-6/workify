@@ -151,7 +151,7 @@ const TimesheetApprovalsPage = () => {
    */
   const toggleSelectAll = () => {
     const submittedIds = timesheets
-      .filter(ts => ts.status === 'Submitted')
+      .filter(ts => ts.status === 'Submitted' && ts.approvalState?.nextApprover === user?.role)
       .map(ts => ts._id);
     
     if (selectedIds.length === submittedIds.length) {
@@ -174,6 +174,23 @@ const TimesheetApprovalsPage = () => {
     return styles[status] || styles.Draft;
   };
 
+  const getAuthorityBadgeClass = (state) => {
+    const styles = {
+      approved: 'bg-green-100 text-green-700',
+      rejected: 'bg-red-100 text-red-700',
+      pending: 'bg-yellow-100 text-yellow-700',
+      not_required: 'bg-gray-100 text-gray-500',
+    };
+    return styles[state] || styles.not_required;
+  };
+
+  const getAuthorityLabel = (role) => {
+    if (role === 'team_lead') return 'Team Lead';
+    if (role === 'hr') return 'HR';
+    if (role === 'director') return 'Director';
+    return role;
+  };
+
   /**
    * Group timesheets by employee for better organization
    */
@@ -188,7 +205,9 @@ const TimesheetApprovalsPage = () => {
   }, {});
 
   // Calculate summary stats
-  const pendingCount = timesheets.filter(ts => ts.status === 'Submitted').length;
+  const pendingCount = timesheets.filter(
+    (ts) => ts.status === 'Submitted' && ts.approvalState?.nextApprover === user?.role
+  ).length;
   const totalHours = timesheets.reduce((sum, ts) => sum + ts.totalHours, 0);
 
   return (
@@ -369,11 +388,11 @@ const TimesheetApprovalsPage = () => {
                             <input
                               type="checkbox"
                               checked={data.entries
-                                .filter(e => e.status === 'Submitted')
+                                .filter(e => e.status === 'Submitted' && e.approvalState?.nextApprover === user?.role)
                                 .every(e => selectedIds.includes(e._id))}
                               onChange={() => {
                                 const ids = data.entries
-                                  .filter(e => e.status === 'Submitted')
+                                  .filter(e => e.status === 'Submitted' && e.approvalState?.nextApprover === user?.role)
                                   .map(e => e._id);
                                 const allSelected = ids.every(id => selectedIds.includes(id));
                                 if (allSelected) {
@@ -391,6 +410,7 @@ const TimesheetApprovalsPage = () => {
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Time</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Hours</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Status</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Approval Chain</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Actions</th>
                         </tr>
                       </thead>
@@ -400,7 +420,7 @@ const TimesheetApprovalsPage = () => {
                           .map((entry) => (
                             <tr key={entry._id} className="hover:bg-gray-50">
                               <td className="px-3 py-3">
-                                {entry.status === 'Submitted' && (
+                                {entry.status === 'Submitted' && entry.approvalState?.nextApprover === user?.role && (
                                   <input
                                     type="checkbox"
                                     checked={selectedIds.includes(entry._id)}
@@ -441,7 +461,23 @@ const TimesheetApprovalsPage = () => {
                                 </span>
                               </td>
                               <td className="px-3 py-3">
-                                {entry.status === 'Submitted' && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {['team_lead', 'hr', 'director'].map((role) => {
+                                    const state = entry.approvalState?.roles?.[role] || 'not_required';
+                                    return (
+                                      <span
+                                        key={`${entry._id}-${role}`}
+                                        className={`px-2 py-1 rounded-full text-[10px] font-semibold ${getAuthorityBadgeClass(state)}`}
+                                        title={getAuthorityLabel(role)}
+                                      >
+                                        {getAuthorityLabel(role)}: {state.replace('_', ' ').toUpperCase()}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                {entry.status === 'Submitted' && entry.approvalState?.nextApprover === user?.role && (
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={() => handleApprove(entry._id)}
@@ -464,6 +500,11 @@ const TimesheetApprovalsPage = () => {
                                       <FiX size={18} />
                                     </button>
                                   </div>
+                                )}
+                                {entry.status === 'Submitted' && entry.approvalState?.nextApprover !== user?.role && (
+                                  <span className="text-xs text-yellow-700">
+                                    Waiting for {getAuthorityLabel(entry.approvalState?.nextApprover || 'next approver')}
+                                  </span>
                                 )}
                                 {entry.status === 'Approved' && (
                                   <span className="text-xs text-green-600">
