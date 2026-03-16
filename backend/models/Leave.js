@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 
+// Define which leave types are paid by default
+const PAID_LEAVE_TYPES = ['casual', 'sick', 'earned', 'maternity'];
+const UNPAID_LEAVE_TYPES = ['other'];
+
 const leaveSchema = new mongoose.Schema({
   employeeId: {
     type: mongoose.Schema.ObjectId,
@@ -10,6 +14,10 @@ const leaveSchema = new mongoose.Schema({
     type: String,
     enum: ['casual', 'sick', 'earned', 'maternity', 'other'],
     required: true,
+  },
+  isPaid: {
+    type: Boolean,
+    default: true,
   },
   startDate: {
     type: Date,
@@ -29,14 +37,22 @@ const leaveSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['applied', 'manager-approved', 'hr-approved', 'director-approved', 'rejected'],
-    default: 'applied',
+    enum: [
+      'Pending_TeamLeader',
+      'Pending_HR', 
+      'Pending_Director',
+      'Approved',
+      'Rejected_By_TeamLeader', 
+      'Rejected_By_HR',
+      'Rejected_By_Director'
+    ],
+    default: 'Pending_TeamLeader',
   },
   approvals: [
     {
       role: {
         type: String,
-        enum: ['manager', 'hr', 'director'],
+        enum: ['team_lead', 'hr', 'director'],
       },
       userId: {
         type: mongoose.Schema.ObjectId,
@@ -66,4 +82,18 @@ const leaveSchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.model('Leave', leaveSchema);
+// Pre-save hook to set isPaid based on leave type if not explicitly set
+leaveSchema.pre('save', function(next) {
+  if (this.isNew && this.isPaid === undefined) {
+    // Default: 'other' type is unpaid, all others are paid
+    this.isPaid = UNPAID_LEAVE_TYPES.includes(this.leaveType) ? false : true;
+  }
+  next();
+});
+
+const Leave = mongoose.model('Leave', leaveSchema);
+
+// Export the model and the paid/unpaid leave type constants
+module.exports = Leave;
+module.exports.PAID_LEAVE_TYPES = PAID_LEAVE_TYPES;
+module.exports.UNPAID_LEAVE_TYPES = UNPAID_LEAVE_TYPES;

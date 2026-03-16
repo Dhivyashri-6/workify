@@ -75,7 +75,7 @@ const AdminPage = () => {
     return u.role === filter;
   });
 
-  const managers = users.filter(u => u.role === 'manager');
+  const teamLeads = users.filter(u => u.role === 'team_lead');
 
   if (user?.role !== 'director') {
     return (
@@ -95,7 +95,7 @@ const AdminPage = () => {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
-            <p className="text-gray-600 mt-2">Manage employees, managers, and HR personnel</p>
+            <p className="text-gray-600 mt-2">Manage employees, team leads, and HR personnel</p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -146,7 +146,7 @@ const AdminPage = () => {
                     required
                   >
                     <option value="employee">Employee</option>
-                    <option value="manager">Manager</option>
+                    <option value="team_lead">Team Lead</option>
                     <option value="hr">HR</option>
                   </select>
                 </div>
@@ -213,7 +213,7 @@ const AdminPage = () => {
 
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-3">
-          {['all', 'employee', 'manager', 'hr'].map(role => (
+          {['all', 'employee', 'team_lead', 'hr'].map(role => (
             <button
               key={role}
               onClick={() => setFilter(role)}
@@ -263,7 +263,7 @@ const AdminPage = () => {
                           <span className={`px-3 py-1 rounded-full text-sm font-bold ${
                             userItem.role === 'employee'
                               ? 'bg-blue-100 text-blue-800'
-                              : userItem.role === 'manager'
+                              : userItem.role === 'team_lead'
                               ? 'bg-purple-100 text-purple-800'
                               : userItem.role === 'hr'
                               ? 'bg-green-100 text-green-800'
@@ -304,7 +304,7 @@ const AdminPage = () => {
         <div className="grid md:grid-cols-4 gap-6">
           {[
             { role: 'employee', label: 'Employees', color: 'bg-blue-100 text-blue-800' },
-            { role: 'manager', label: 'Managers', color: 'bg-purple-100 text-purple-800' },
+            { role: 'team_lead', label: 'Team Leads', color: 'bg-purple-100 text-purple-800' },
             { role: 'hr', label: 'HR Staff', color: 'bg-green-100 text-green-800' },
           ].map(({ role, label, color }) => (
             <div key={role} className="card text-center">

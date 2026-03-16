@@ -29,6 +29,7 @@ export const authService = {
     localStorage.removeItem('user');
   },
   getCurrentUser: () => apiClient.get('/auth/me'),
+  changePassword: (currentPassword, newPassword) => apiClient.put('/auth/change-password', { currentPassword, newPassword }),
 };
 
 export const userService = {
@@ -38,12 +39,16 @@ export const userService = {
   getManagers: () => apiClient.get('/users/managers'),
   getAllUsers: () => apiClient.get('/users'),
   addUser: (userData) => apiClient.post('/users', userData),
+  updateUser: (id, userData) => apiClient.put(`/users/${id}`, userData),
+  assignTeam: (data) => apiClient.post('/users/assign-team', data),
   removeUser: (userId) => apiClient.delete(`/users/${userId}`),
 };
 
 export const leaveService = {
   applyLeave: (data) => apiClient.post('/leaves/apply', data),
   getMyLeaves: () => apiClient.get('/leaves/my-leaves'),
+  getLeaveBalanceStats: () => apiClient.get('/leaves/balance-stats'),
+  getBlockedDates: () => apiClient.get('/leaves/blocked-dates'),
   getTeamLeaves: () => apiClient.get('/leaves/team-leaves'),
   getAllLeaves: () => apiClient.get('/leaves'),
   getLeaveRequests: () => apiClient.get('/leaves/requests'),
@@ -63,6 +68,41 @@ export const reportService = {
   getLeaveReport: () => apiClient.get('/reports/leaves'),
   getEmployeeLeaveReport: (employeeId) => apiClient.get(`/reports/employee/${employeeId}`),
   downloadReport: (type) => apiClient.get(`/reports/download/${type}`, { responseType: 'blob' }),
+  downloadLeavesByDateRange: (params) => apiClient.get('/reports/download/leaves/range', { params, responseType: 'blob' }),
+  downloadTimesheetsByDateRange: (params) => apiClient.get('/reports/download/timesheets/range', { params, responseType: 'blob' }),
+  getPayrollReport: (params) => apiClient.get('/reports/payroll', { params }),
+  downloadPayrollByDateRange: (params) => apiClient.get('/reports/download/payroll/range', { params, responseType: 'blob' }),
+};
+
+// =====================================================
+// TIMESHEET SERVICE - Timesheet Management Module
+// =====================================================
+export const timesheetService = {
+  // Employee operations
+  createTimesheet: (data) => apiClient.post('/timesheets', data),
+  updateTimesheet: (id, data) => apiClient.put(`/timesheets/${id}`, data),
+  deleteTimesheet: (id) => apiClient.delete(`/timesheets/${id}`),
+  getMyTimesheets: (params) => apiClient.get('/timesheets/my-timesheets', { params }),
+  getTimesheetById: (id) => apiClient.get(`/timesheets/${id}`),
+  
+  // Submit for approval
+  submitTimesheet: (id) => apiClient.put(`/timesheets/${id}/submit`),
+  submitBatchTimesheets: (timesheetIds) => apiClient.put('/timesheets/submit-batch', { timesheetIds }),
+  
+  // Manager operations
+  getTeamTimesheets: (params) => apiClient.get('/timesheets/team-timesheets', { params }),
+  getPendingApprovals: () => apiClient.get('/timesheets/pending-approvals'),
+  approveTimesheet: (id, data) => apiClient.put(`/timesheets/${id}/approve`, data),
+  rejectTimesheet: (id, data) => apiClient.put(`/timesheets/${id}/reject`, data),
+  approveBatchTimesheets: (timesheetIds, comments) => 
+    apiClient.put('/timesheets/approve-batch', { timesheetIds, comments }),
+  
+  // Reports
+  getEmployeeHoursReport: (params) => apiClient.get('/timesheets/reports/employee-hours', { params }),
+  getProjectHoursReport: (params) => apiClient.get('/timesheets/reports/project-hours', { params }),
+  getWeeklySummaryReport: (params) => apiClient.get('/timesheets/reports/weekly-summary', { params }),
+  getDailySummaryReport: (params) => apiClient.get('/timesheets/reports/daily-summary', { params }),
+  getEmployeeWeeklySummaryReport: (params) => apiClient.get('/timesheets/reports/employee-weekly-summary', { params }),
 };
 
 export default apiClient;

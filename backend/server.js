@@ -7,8 +7,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Database Connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -24,6 +24,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/leaves', require('./routes/leaves'));
 app.use('/api/holidays', require('./routes/holidays'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/timesheets', require('./routes/timesheets'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

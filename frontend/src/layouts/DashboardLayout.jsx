@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiMenu, FiX, FiLogOut, FiHome, FiCalendar, FiUsers, FiSettings, FiFileText, FiUser, FiUserCheck } from 'react-icons/fi';
+import { FiMenu, FiX, FiLogOut, FiHome, FiCalendar, FiUsers, FiSettings, FiFileText, FiUser, FiUserCheck, FiClock } from 'react-icons/fi';
 import { BsBarChart } from 'react-icons/bs';
 
 const DashboardLayout = ({ children }) => {
@@ -17,15 +17,19 @@ const DashboardLayout = ({ children }) => {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: FiHome },
-    { path: '/leaves', label: 'Leaves', icon: FiCalendar },
+    user?.role !== 'director' && { path: '/leaves', label: 'Leaves', icon: FiCalendar },
+    { path: '/timesheet-entry', label: 'Timesheet', icon: FiClock },
+    { path: '/timesheet-history', label: 'Timesheet History', icon: FiClock },
     { path: '/profile', label: 'Profile', icon: FiUser },
     { path: '/holidays', label: 'Holidays', icon: FiCalendar },
-    user?.role === 'manager' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
-    user?.role === 'hr' && { path: '/approvals', label: 'Approvals', icon: FiFileText },
+    user?.role === 'team_lead' && { path: '/team-leaves', label: 'Team Leaves', icon: FiUsers },
+    (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/timesheet-approvals', label: 'TS Approvals', icon: FiClock },
+    (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/approvals', label: 'Approvals', icon: FiFileText },
+    (user?.role === 'team_lead' || user?.role === 'hr' || user?.role === 'director') && { path: '/timesheet-reports', label: 'TS Reports', icon: BsBarChart },
     user?.role === 'director' && { path: '/admin', label: 'Admin', icon: FiUsers },
     user?.role === 'director' && { path: '/user-management', label: 'User Management', icon: FiUserCheck },
     user?.role === 'director' && { path: '/reports', label: 'Reports', icon: BsBarChart },
-    { path: '/settings', label: 'Settings', icon: FiSettings },
+    user?.role === 'director' && { path: '/settings', label: 'Settings', icon: FiSettings },
   ].filter(Boolean);
 
   const isActive = (path) => location.pathname === path;
@@ -71,9 +75,17 @@ const DashboardLayout = ({ children }) => {
         {/* User Info */}
         <div className="p-4 border-t border-blue-700">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center">
-              <span className="text-sm font-bold">{user?.name?.[0]}</span>
-            </div>
+            {user?.profileImage ? (
+              <img 
+                src={user.profileImage} 
+                alt={user?.name} 
+                className="w-10 h-10 rounded-full object-cover border-2 border-accent"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center">
+                <span className="text-sm font-bold">{user?.name?.[0]}</span>
+              </div>
+            )}
             {sidebarOpen && (
               <div>
                 <p className="text-sm font-semibold">{user?.name}</p>

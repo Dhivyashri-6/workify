@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['employee', 'manager', 'hr', 'director'],
+    enum: ['employee', 'team_lead', 'hr', 'director'],
     default: 'employee',
   },
   department: String,
@@ -38,6 +38,16 @@ const userSchema = new mongoose.Schema({
   managerId: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',
+  },
+  hourlyRate: {
+    type: Number,
+    default: 25,
+    min: 0,
+  },
+  overtimeMultiplier: {
+    type: Number,
+    default: 1.5,
+    min: 1,
   },
   leaveBalance: {
     casualLeave: { type: Number, default: 12 },

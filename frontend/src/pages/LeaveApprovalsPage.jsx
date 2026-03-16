@@ -57,8 +57,8 @@ const LeaveApprovalsPage = () => {
 
   const getNextApprover = (leave) => {
     switch (user?.role) {
-      case 'manager':
-        return 'Manager';
+      case 'team_lead':
+        return 'Team Lead';
       case 'hr':
         return 'HR';
       case 'director':
@@ -139,12 +139,13 @@ const LeaveApprovalsPage = () => {
                           let rolesToShow = [];
                           
                           if (employeeRole === 'employee') {
-                            // Employee workflow: Manager → HR → Director
-                            rolesToShow = ['manager', 'hr', 'director'];
-                          } else if (employeeRole === 'manager' || employeeRole === 'hr') {
-                            // Manager/HR workflow: Direct to Director
-                            rolesToShow = ['director'];
-                          } else {
+                            // Employee workflow: Team Lead -> HR
+                            rolesToShow = ['team_lead', 'hr'];
+                          } else if (employeeRole === 'team_lead') {
+                            // Team Lead workflow: HR
+                            rolesToShow = ['hr'];
+                          } else if (employeeRole === 'hr') {
+                            // HR workflow: Director
                             rolesToShow = ['director'];
                           }
                           
@@ -197,15 +198,15 @@ const LeaveApprovalsPage = () => {
                   let canApprove = false;
                   
                   // Check if current user can approve this leave
-                  if (user?.role === 'manager') {
-                    canApprove = employeeRole === 'employee' && leave.status === 'applied';
+                  if (user?.role === 'team_lead') {
+                    canApprove = employeeRole === 'employee' && leave.status === 'Pending_TeamLeader';
                   } else if (user?.role === 'hr') {
-                    canApprove = employeeRole === 'employee' && leave.status === 'manager-approved';
+                    if (leave.status === 'Pending_HR') {
+                      canApprove = true;
+                    }
                   } else if (user?.role === 'director') {
-                    if (employeeRole === 'employee') {
-                      canApprove = leave.status === 'hr-approved';
-                    } else if (employeeRole === 'manager' || employeeRole === 'hr') {
-                      canApprove = leave.status === 'applied';
+                    if (employeeRole === 'hr' && leave.status === 'Pending_Director') {
+                      canApprove = true;
                     }
                   }
                   

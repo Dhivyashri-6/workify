@@ -68,15 +68,15 @@ const seedDatabase = async () => {
       },
     ];
 
-    // Managers
-    const managers = [
+    // Team Leads
+    const teamLeads = [
       {
         name: 'Sarah Manager',
         email: 'manager@example.com',
         password: hashedPassword,
-        role: 'manager',
+        role: 'team_lead',
         department: 'Engineering',
-        designation: 'Engineering Manager',
+        designation: 'Engineering Team Lead',
         phone: '+1234567891',
         dob: new Date('1990-08-20'),
         gender: 'Female',
@@ -96,9 +96,9 @@ const seedDatabase = async () => {
         name: 'David Thompson',
         email: 'david.thompson@example.com',
         password: hashedPassword,
-        role: 'manager',
+        role: 'team_lead',
         department: 'Sales',
-        designation: 'Sales Manager',
+        designation: 'Sales Team Lead',
         phone: '+1234567895',
         dob: new Date('1987-04-12'),
         gender: 'Male',
@@ -118,9 +118,9 @@ const seedDatabase = async () => {
         name: 'Emily Rodriguez',
         email: 'emily.rodriguez@example.com',
         password: hashedPassword,
-        role: 'manager',
+        role: 'team_lead',
         department: 'Marketing',
-        designation: 'Marketing Manager',
+        designation: 'Marketing Team Lead',
         phone: '+1234567896',
         dob: new Date('1989-11-25'),
         gender: 'Female',
@@ -140,9 +140,9 @@ const seedDatabase = async () => {
         name: 'James Wilson',
         email: 'james.wilson@example.com',
         password: hashedPassword,
-        role: 'manager',
+        role: 'team_lead',
         department: 'Engineering',
-        designation: 'Senior Engineering Manager',
+        designation: 'Senior Engineering Team Lead',
         phone: '+1234567897',
         dob: new Date('1986-09-30'),
         gender: 'Male',
@@ -455,7 +455,7 @@ const seedDatabase = async () => {
     ];
 
     // Combine all users
-    const demoUsers = [...directors, ...managers, ...hrStaff, ...employees];
+    const demoUsers = [...directors, ...teamLeads, ...hrStaff, ...employees];
 
     // Insert users
     const createdUsers = await User.insertMany(demoUsers);

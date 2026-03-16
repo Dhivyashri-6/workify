@@ -10,6 +10,7 @@ const HolidayCalendarPage = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [country, setCountry] = useState('IN'); // Default to India
   const [formData, setFormData] = useState({
     name: '',
     date: '',
@@ -19,13 +20,128 @@ const HolidayCalendarPage = () => {
 
   useEffect(() => {
     fetchHolidays();
-  }, []);
+  }, [selectedYear, country]);
+
+  // Indian Government Holidays 2026 (National & Regional Holidays)
+  const getIndianHolidays = (year) => {
+    return [
+      { name: 'New Year', date: `${year}-01-01`, description: 'New Year Day', category: 'national' },
+      { name: 'Pongal / Makar Sankranti', date: `${year}-01-15`, description: 'Harvest Festival', category: 'national' },
+      { name: 'Republic Day', date: `${year}-01-26`, description: 'Republic Day of India', category: 'national' },
+      { name: 'Doljatra / Holi', date: `${year}-03-03`, description: 'Festival of Colors', category: 'national' },
+      { name: 'Holi', date: `${year}-03-04`, description: 'Festival of Colors', category: 'national' },
+      { name: 'Ugadi', date: `${year}-03-19`, description: 'Telugu New Year', category: 'national' },
+      { name: 'Ramzan (Id-ul-Fitr)', date: `${year}-03-20`, description: 'End of Ramadan', category: 'national' },
+      { name: 'Good Friday', date: `${year}-04-03`, description: 'Christian Holiday', category: 'national' },
+      { name: 'Tamil New Year', date: `${year}-04-14`, description: 'Tamil New Year', category: 'national' },
+      { name: 'Vishu / Bengali New Year', date: `${year}-04-15`, description: 'Kerala & Bengal New Year', category: 'national' },
+      { name: 'May Day', date: `${year}-05-01`, description: 'Labour Day', category: 'national' },
+      { name: 'Telangana Formation Day', date: `${year}-06-02`, description: 'Telangana State Formation', category: 'state' },
+      { name: 'Ratha Yatra', date: `${year}-07-16`, description: 'Chariot Festival', category: 'national' },
+      { name: 'Independence Day', date: `${year}-08-15`, description: 'Independence Day of India', category: 'national' },
+      { name: 'First Onam', date: `${year}-08-25`, description: 'Kerala Festival', category: 'state' },
+      { name: 'Thiruvonam', date: `${year}-08-26`, description: 'Main Onam Day', category: 'state' },
+      { name: 'Raksha Bandhan', date: `${year}-08-28`, description: 'Brother-Sister Festival', category: 'national' },
+      { name: 'Janmashtami', date: `${year}-09-04`, description: 'Birth of Lord Krishna', category: 'national' },
+      { name: 'Ganesh Chaturthi', date: `${year}-09-14`, description: 'Birth of Lord Ganesha', category: 'national' },
+      { name: 'Gandhi Jayanti', date: `${year}-10-02`, description: 'Birth Anniversary of Mahatma Gandhi', category: 'national' },
+      { name: 'Dussehra / Vijayadashami', date: `${year}-10-20`, description: 'Victory of Good over Evil', category: 'national' },
+      { name: 'Durga Puja / Dasami', date: `${year}-10-21`, description: 'Durga Puja Festival', category: 'national' },
+      { name: 'Diwali', date: `${year}-11-08`, description: 'Festival of Lights', category: 'national' },
+      { name: 'Govardhan Puja', date: `${year}-11-09`, description: 'Day after Diwali', category: 'national' },
+      { name: 'Bhai Dooj / Bali Pratipada', date: `${year}-11-10`, description: 'Brother-Sister Festival', category: 'national' },
+      { name: 'Guru Nanak Jayanti', date: `${year}-11-15`, description: 'Birth of Guru Nanak', category: 'national' },
+      { name: 'Christmas', date: `${year}-12-25`, description: 'Christmas Day', category: 'national' },
+    ].map(h => ({ ...h, _id: `india-${h.date}`, isGovernmentHoliday: true }));
+  };
 
   const fetchHolidays = async () => {
     try {
       setLoading(true);
-      const response = await holidayService.getHolidays();
-      setHolidays(response.data);
+      
+      let allHolidays = [];
+
+      // Fetch government holidays
+      try {
+        let govHolidays = [];
+        
+        if (country === 'IN') {
+          // Use hardcoded Indian holidays (API doesn't support India)
+          govHolidays = getIndianHolidays(selectedYear);
+          console.log('Indian holidays loaded:', govHolidays.length);
+          allHolidays = [...govHolidays];
+        } else {
+          // Fetch from Nager.Date API for other countries
+          const govResponse = await fetch(`https://date.nager.at/api/v3/publicholidays/${selectedYear}/${country}`);
+          if (govResponse.ok) {
+            const apiHolidays = await govResponse.json();
+            console.log('Government holidays loaded:', apiHolidays.length);
+            
+            // Convert government holidays to our format
+            const formattedGovHolidays = apiHolidays.map(h => ({
+              name: h.localName || h.name,
+              date: h.date,
+              description: 'Government Holiday',
+              category: 'national',
+              isGovernmentHoliday: true,
+              _id: `gov-${h.date}`
+            }));
+
+            allHolidays = [...formattedGovHolidays];
+          } else {
+            console.error('Failed to fetch government holidays:', govResponse.status);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching government holidays:', error);
+      }
+
+      // Fetch from database (custom holidays)
+      try {
+        const response = await holidayService.getHolidays();
+        if (response.data && response.data.length > 0) {
+          const existingDates = new Set(allHolidays.map(h => h.date));
+          const dbHolidays = response.data.filter(h => !existingDates.has(h.date));
+          allHolidays = [...allHolidays, ...dbHolidays];
+        }
+      } catch (error) {
+        console.error('Error fetching database holidays:', error);
+      }
+
+      // Add ONLY Saturday (6) and Sunday (0) as weekends
+      const existingDates = new Set(allHolidays.map(h => h.date));
+      
+      for (let i = 0; i < 366; i++) {
+        const date = new Date(selectedYear, 0, 1);
+        date.setDate(date.getDate() + i);
+        
+        if (date.getFullYear() !== selectedYear) break;
+        
+        const dayOfWeek = date.getDay();
+        
+        // ONLY mark Saturday (dayOfWeek = 6) and Sunday (dayOfWeek = 0)
+        const isSaturday = dayOfWeek === 6;
+        const isSunday = dayOfWeek === 0;
+        
+        if (isSaturday || isSunday) {
+          const dateStr = date.toISOString().split('T')[0];
+          
+          // Don't add if already exists (government holiday might fall on weekend)
+          if (!existingDates.has(dateStr)) {
+            allHolidays.push({
+              name: isSaturday ? 'Saturday' : 'Sunday',
+              date: dateStr,
+              description: 'Weekend',
+              category: 'weekend',
+              isWeekend: true,
+              _id: `weekend-${dateStr}`
+            });
+            existingDates.add(dateStr);
+          }
+        }
+      }
+
+      setHolidays(allHolidays);
     } catch (error) {
       console.error('Error fetching holidays:', error);
     } finally {
@@ -105,6 +221,38 @@ const HolidayCalendarPage = () => {
           )}
         </div>
 
+        {/* Country Selector */}
+        <div className="card bg-blue-50 border-l-4 border-primary">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-2">Select Country for Government Holidays</p>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="input-field max-w-xs"
+              >
+                <option value="IN">India</option>
+                <option value="US">United States</option>
+                <option value="GB">United Kingdom</option>
+                <option value="AU">Australia</option>
+                <option value="CA">Canada</option>
+                <option value="SG">Singapore</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="JP">Japan</option>
+                <option value="CN">China</option>
+              </select>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-600">
+                ✓ Government holidays loaded<br/>
+                ✓ All weekends (Sat & Sun) marked<br/>
+                ✓ Year {selectedYear}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Add Holiday Form */}
         {showForm && user?.role === 'director' && (
           <div className="card">
@@ -145,6 +293,7 @@ const HolidayCalendarPage = () => {
                     <option value="national">National</option>
                     <option value="state">State</option>
                     <option value="company">Company</option>
+                    <option value="weekend">Weekend</option>
                   </select>
                 </div>
               </div>
@@ -201,105 +350,127 @@ const HolidayCalendarPage = () => {
             </div>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {months.map((month) => {
               const monthHolidays = getDaysInMonth(month.number);
+              const firstDay = new Date(selectedYear, month.number - 1, 1).getDay();
+              const daysInMonth = month.days;
+              
+              // Create array of calendar days (Monday to Sunday)
+              const calendarDays = [];
+              // Shift firstDay so Monday is 0 and Sunday is 6
+              const adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1;
+              for (let i = 0; i < adjustedFirstDay; i++) {
+                calendarDays.push(null);
+              }
+              for (let i = 1; i <= daysInMonth; i++) {
+                calendarDays.push(i);
+              }
+              
               return (
                 <div key={month.number} className="card">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-3">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 border-b-2 pb-3">
                     {month.month} {selectedYear}
                   </h3>
-                  {monthHolidays.length === 0 ? (
-                    <p className="text-gray-500 text-center py-6">No holidays</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {monthHolidays.map((holiday) => (
+                  
+                  {/* Week Headers */}
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                      <div key={day} className="text-center font-bold text-sm text-gray-600 py-2 bg-gray-50 rounded">
+                        {day}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Calendar Days */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {calendarDays.map((day, index) => {
+                      if (!day) {
+                        return <div key={`empty-${index}`} className="aspect-square"></div>;
+                      }
+                      
+                      const dateStr = `${selectedYear}-${String(month.number).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const dayOfWeek = new Date(selectedYear, month.number - 1, day).getDay();
+                      // Saturday = 6, Sunday = 0
+                      const isSaturday = dayOfWeek === 6;
+                      const isSunday = dayOfWeek === 0;
+                      const isWeekend = isSaturday || isSunday;
+                      const holiday = holidays.find(h => h.date === dateStr);
+                      
+                      let bgColor = 'bg-white';
+                      let textColor = 'text-gray-900';
+                      let borderColor = 'border border-gray-200';
+                      
+                      // First check if it's a weekend (Saturday or Sunday)
+                      if (isWeekend) {
+                        bgColor = 'bg-purple-100';
+                        textColor = 'text-purple-900';
+                        borderColor = 'border-2 border-purple-400';
+                      }
+                      
+                      // Then override with holiday styling if it's a special holiday
+                      if (holiday && holiday.category !== 'weekend') {
+                        if (holiday.category === 'national') {
+                          bgColor = 'bg-red-100';
+                          textColor = 'text-red-900';
+                          borderColor = 'border-2 border-red-400';
+                        } else if (holiday.category === 'state') {
+                          bgColor = 'bg-blue-100';
+                          textColor = 'text-blue-900';
+                          borderColor = 'border-2 border-blue-400';
+                        } else if (holiday.category === 'company') {
+                          bgColor = 'bg-green-100';
+                          textColor = 'text-green-900';
+                          borderColor = 'border-2 border-green-400';
+                        }
+                      }
+                      
+                      return (
                         <div
-                          key={holiday._id}
-                          className="p-4 border border-gray-200 rounded-lg hover:border-primary transition-colors"
+                          key={day}
+                          className={`aspect-square flex items-center justify-center rounded font-semibold text-sm ${bgColor} ${textColor} ${borderColor} hover:shadow-md transition-shadow cursor-pointer group relative`}
+                          title={holiday ? holiday.name : ''}
                         >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-bold text-gray-900">{holiday.name}</p>
-                              <p className="text-sm text-gray-600">
-                                {new Date(holiday.date).toLocaleDateString('en-US', {
-                                  weekday: 'long',
-                                  month: 'short',
-                                  day: 'numeric',
-                                })}
-                              </p>
-                              {holiday.description && (
-                                <p className="text-sm text-gray-500 mt-1">{holiday.description}</p>
-                              )}
-                              <span className={`inline-block mt-2 text-xs font-semibold px-3 py-1 rounded-full ${
-                                holiday.category === 'national'
-                                  ? 'bg-red-100 text-red-800'
-                                  : holiday.category === 'state'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
-                                {holiday.category.toUpperCase()}
-                              </span>
+                          {day}
+                          
+                          {/* Tooltip */}
+                          {holiday && (
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
+                              {holiday.name}
                             </div>
-                            {user?.role === 'director' && (
-                              <button
-                                onClick={() => handleDelete(holiday._id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              >
-                                <FiTrash2 size={18} />
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Holidays List View */}
-        {filteredHolidays.length > 0 && (
-          <div className="card">
-            <h2 className="text-2xl font-bold mb-6">All Holidays in {selectedYear}</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b-2 border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Holiday</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Category</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredHolidays
-                    .sort((a, b) => new Date(a.date) - new Date(b.date))
-                    .map((holiday) => (
-                      <tr key={holiday._id} className="border-b border-gray-200 hover:bg-gray-50">
-                        <td className="py-3 px-4 font-semibold text-gray-900">{holiday.name}</td>
-                        <td className="py-3 px-4">{new Date(holiday.date).toLocaleDateString()}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                            holiday.category === 'national'
-                              ? 'bg-red-100 text-red-800'
-                              : holiday.category === 'state'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {holiday.category.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-gray-600">{holiday.description || '-'}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+        {/* Legend */}
+        <div className="card bg-gradient-to-r from-gray-50 to-white">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Legend</h3>
+          <div className="grid md:grid-cols-4 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 bg-red-100 border-2 border-red-400 rounded"></div>
+              <span className="text-sm font-medium text-gray-700">National Holidays</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 bg-blue-100 border-2 border-blue-400 rounded"></div>
+              <span className="text-sm font-medium text-gray-700">State Holidays</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 bg-purple-100 border-2 border-purple-400 rounded"></div>
+              <span className="text-sm font-medium text-gray-700">Weekends</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 bg-green-100 border-2 border-green-400 rounded"></div>
+              <span className="text-sm font-medium text-gray-700">Company Events</span>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </DashboardLayout>
   );
