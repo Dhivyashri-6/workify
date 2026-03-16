@@ -133,7 +133,7 @@ const LeavesPage = () => {
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">Start Date</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">End Date</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">Days</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Reason</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Paid</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">Action</th>
                   </tr>
@@ -145,7 +145,13 @@ const LeavesPage = () => {
                       <td className="py-3 px-4">{new Date(leave.startDate).toLocaleDateString()}</td>
                       <td className="py-3 px-4">{new Date(leave.endDate).toLocaleDateString()}</td>
                       <td className="py-3 px-4 font-semibold">{leave.numberOfDays}</td>
-                      <td className="py-3 px-4 text-gray-600 truncate max-w-xs">{leave.reason}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${
+                          leave.isPaid !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {leave.isPaid !== false ? 'Paid' : 'Unpaid'}
+                        </span>
+                      </td>
                       <td className="py-3 px-4">
                         <span className={`badge ${getStatusColor(leave.status)}`}>
                           {getStatusLabel(leave.status)}
@@ -213,6 +219,14 @@ const LeavesPage = () => {
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">To</p>
                     <p className="font-medium text-gray-900">{new Date(selectedLeave.endDate).toLocaleDateString()}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Payment Status</p>
+                    <span className={`px-3 py-1 text-sm font-medium rounded ${
+                      selectedLeave.isPaid !== false ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {selectedLeave.isPaid !== false ? 'Paid Leave' : 'Unpaid Leave'}
+                    </span>
                   </div>
                 </div>
 

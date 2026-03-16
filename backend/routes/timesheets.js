@@ -16,6 +16,7 @@ const {
   getProjectHoursReport,
   getWeeklySummaryReport,
   getDailySummaryReport,
+  getEmployeeWeeklySummaryReport,
 } = require('../controllers/timesheetController');
 const { auth, authorize } = require('../middleware/auth');
 
@@ -33,6 +34,9 @@ router.get('/reports/project-hours', auth, getProjectHoursReport);
 
 // Get weekly summary report
 router.get('/reports/weekly-summary', auth, getWeeklySummaryReport);
+
+// Get employee weekly summary report (with weekly breakdown per employee)
+router.get('/reports/employee-weekly-summary', auth, getEmployeeWeeklySummaryReport);
 
 // Get daily summary report
 router.get('/reports/daily-summary', auth, getDailySummaryReport);

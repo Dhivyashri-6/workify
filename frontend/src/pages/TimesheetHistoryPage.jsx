@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiClock, FiPlus, FiFilter, FiCalendar, FiChevronLeft, FiChevronRight, FiEye } from 'react-icons/fi';
+import { FiClock, FiPlus, FiFilter, FiCalendar, FiChevronLeft, FiChevronRight, FiEye, FiX, FiEdit2 } from 'react-icons/fi';
 import { timesheetService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../layouts/DashboardLayout';
@@ -40,6 +40,9 @@ const TimesheetHistoryPage = () => {
     rejectedCount: 0,
     draftCount: 0,
   });
+
+  // Selected timesheet for modal view
+  const [selectedTimesheet, setSelectedTimesheet] = useState(null);
 
   /**
    * Get week range from a start date
@@ -355,12 +358,22 @@ const TimesheetHistoryPage = () => {
                                 </span>
                               </td>
                               <td className="px-4 py-3">
-                                <button
-                                  onClick={() => navigate(`/timesheet-entry?date=${date}`)}
-                                  className="text-primary hover:text-blue-700 flex items-center gap-1 text-sm"
-                                >
-                                  <FiEye size={14} /> View
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setSelectedTimesheet(entry)}
+                                    className="text-primary hover:text-blue-700 flex items-center gap-1 text-sm font-medium"
+                                  >
+                                    <FiEye size={14} /> View
+                                  </button>
+                                  {(entry.status === 'Draft' || entry.status === 'Rejected') && (
+                                    <button
+                                      onClick={() => navigate(`/timesheet-entry?date=${date}&edit=${entry._id}`)}
+                                      className="text-orange-600 hover:text-orange-700 flex items-center gap-1 text-sm font-medium"
+                                    >
+                                      <FiEdit2 size={14} /> Edit
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -372,6 +385,153 @@ const TimesheetHistoryPage = () => {
             </div>
           )}
         </div>
+
+        {/* Timesheet Details Modal */}
+        {selectedTimesheet && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl">
+                <h3 className="text-xl font-bold text-gray-900">Timesheet Details</h3>
+                <button
+                  onClick={() => setSelectedTimesheet(null)}
+                  className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                >
+                  <FiX size={20} className="text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-6">
+                {/* Status Banner */}
+                <div className={`p-4 rounded-lg flex items-center gap-3 ${
+                  selectedTimesheet.status === 'Approved' ? 'bg-green-50 text-green-700 border border-green-200' :
+                  selectedTimesheet.status === 'Rejected' ? 'bg-red-50 text-red-700 border border-red-200' :
+                  selectedTimesheet.status === 'Submitted' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                  'bg-gray-50 text-gray-700 border border-gray-200'
+                }`}>
+                  <div className={`w-3 h-3 rounded-full ${
+                    selectedTimesheet.status === 'Approved' ? 'bg-green-500' :
+                    selectedTimesheet.status === 'Rejected' ? 'bg-red-500' :
+                    selectedTimesheet.status === 'Submitted' ? 'bg-yellow-500' :
+                    'bg-gray-500'
+                  }`} />
+                  <span className="font-semibold">{selectedTimesheet.status}</span>
+                </div>
+
+                {/* Main Details */}
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Project</p>
+                    <p className="font-medium text-gray-900">{selectedTimesheet.projectName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Task</p>
+                    <p className="font-medium text-gray-900">{selectedTimesheet.taskName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Date</p>
+                    <p className="font-medium text-gray-900">
+                      {new Date(selectedTimesheet.date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Time</p>
+                    <p className="font-medium text-gray-900">{selectedTimesheet.startTime} - {selectedTimesheet.endTime}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Hours</p>
+                    <p className={`font-medium ${selectedTimesheet.isOvertime ? 'text-orange-600' : 'text-gray-900'}`}>
+                      {selectedTimesheet.totalHours} hrs
+                      {selectedTimesheet.isOvertime && <span className="text-xs ml-1">(Overtime)</span>}
+                    </p>
+                  </div>
+                  {selectedTimesheet.overtimeHours > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Overtime Hours</p>
+                      <p className="font-medium text-orange-600">{selectedTimesheet.overtimeHours} hrs</p>
+                    </div>
+                  )}
+                  {selectedTimesheet.breakTime > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Break Time</p>
+                      <p className="font-medium text-gray-900">{selectedTimesheet.breakTime} mins</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Description */}
+                {selectedTimesheet.description && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</p>
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-gray-700 text-sm leading-relaxed">
+                      {selectedTimesheet.description}
+                    </div>
+                  </div>
+                )}
+
+                {/* Rejection Details (if applicable) */}
+                {selectedTimesheet.status === 'Rejected' && selectedTimesheet.rejectionReason && (
+                  <div className="animate-fade-in">
+                    <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-2">Rejection Reason</p>
+                    <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                      <p className="text-red-700 text-sm">
+                        {selectedTimesheet.rejectionReason}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Approval Comments (if any) */}
+                {selectedTimesheet.approvalComments && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Approval Comments</p>
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                      <p className="text-green-700 text-sm">
+                        {selectedTimesheet.approvalComments}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Created/Updated timestamps */}
+                <div className="text-xs text-gray-400 pt-4 border-t border-gray-100">
+                  {selectedTimesheet.createdAt && (
+                    <p>Created: {new Date(selectedTimesheet.createdAt).toLocaleString()}</p>
+                  )}
+                  {selectedTimesheet.updatedAt && selectedTimesheet.updatedAt !== selectedTimesheet.createdAt && (
+                    <p>Updated: {new Date(selectedTimesheet.updatedAt).toLocaleString()}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+                {(selectedTimesheet.status === 'Draft' || selectedTimesheet.status === 'Rejected') && (
+                  <button
+                    onClick={() => {
+                      const date = new Date(selectedTimesheet.date).toISOString().split('T')[0];
+                      navigate(`/timesheet-entry?date=${date}&edit=${selectedTimesheet._id}`);
+                      setSelectedTimesheet(null);
+                    }}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <FiEdit2 size={16} /> Edit Entry
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedTimesheet(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

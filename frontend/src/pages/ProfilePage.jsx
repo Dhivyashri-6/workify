@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiUser, FiMail, FiPhone, FiMapPin, FiEdit2, FiSave } from 'react-icons/fi';
-import { userService } from '../services/api';
+import { FiUser, FiMail, FiPhone, FiMapPin, FiEdit2, FiSave, FiLock, FiEye, FiEyeOff, FiX, FiCamera } from 'react-icons/fi';
+import { userService, authService } from '../services/api';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 const ProfilePage = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState(user?.profileImage || '');
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
@@ -20,6 +22,20 @@ const ProfilePage = () => {
     zipCode: user?.zipCode || '',
   });
 
+  // Password change state
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -27,18 +43,78 @@ const ProfilePage = () => {
     });
   };
 
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image size should be less than 2MB');
+        return;
+      }
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      await userService.updateProfile(formData);
+      const dataToUpdate = { ...formData, profileImage };
+      const response = await userService.updateProfile(dataToUpdate);
+      // Update the user context with new data
+      if (updateUser && response.data?.user) {
+        updateUser(response.data.user);
+      }
       setIsEditing(false);
       alert('Profile updated successfully!');
     } catch (error) {
       alert('Error updating profile: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    // Validate passwords
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters');
+      return;
+    }
+
+    setPasswordLoading(true);
+
+    try {
+      await authService.changePassword(passwordData.currentPassword, passwordData.newPassword);
+      setPasswordSuccess('Password changed successfully!');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => {
+        setShowPasswordForm(false);
+        setPasswordSuccess('');
+      }, 2000);
+    } catch (error) {
+      setPasswordError(error.response?.data?.message || 'Failed to change password');
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -68,12 +144,44 @@ const ProfilePage = () => {
         <div className="grid md:grid-cols-3 gap-6">
           {/* Profile Picture */}
           <div className="card flex flex-col items-center">
-            <div className="w-32 h-32 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white mb-4">
-              <span className="text-5xl font-bold">{user?.name?.[0]}</span>
+            <div className="relative">
+              {profileImage || user?.profileImage ? (
+                <img 
+                  src={profileImage || user?.profileImage} 
+                  alt="Profile" 
+                  className="w-32 h-32 rounded-full object-cover border-4 border-primary"
+                />
+              ) : (
+                <div className="w-32 h-32 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-white">
+                  <span className="text-5xl font-bold">{user?.name?.[0]}</span>
+                </div>
+              )}
+              {isEditing && (
+                <>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 w-10 h-10 bg-primary hover:bg-accent text-white rounded-full flex items-center justify-center shadow-lg transition-colors"
+                    title="Upload photo"
+                  >
+                    <FiCamera size={18} />
+                  </button>
+                </>
+              )}
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">{user?.name}</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mt-4">{user?.name}</h2>
             <p className="text-gray-600 capitalize">{user?.role}</p>
             <p className="text-sm text-gray-500 mt-2">{user?.email}</p>
+            {isEditing && (
+              <p className="text-xs text-gray-400 mt-2">Click camera icon to upload photo</p>
+            )}
           </div>
 
           {/* Profile Details */}
@@ -258,6 +366,133 @@ const ProfilePage = () => {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Security Settings - Change Password */}
+        {!isEditing && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <FiLock size={20} className="text-primary" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Security Settings</h3>
+              </div>
+              {!showPasswordForm && (
+                <button
+                  onClick={() => setShowPasswordForm(true)}
+                  className="btn-secondary text-sm"
+                >
+                  Change Password
+                </button>
+              )}
+            </div>
+
+            {showPasswordForm && (
+              <form onSubmit={handlePasswordChange} className="space-y-4 mt-4">
+                {passwordError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                    {passwordError}
+                  </div>
+                )}
+                {passwordSuccess && (
+                  <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
+                    {passwordSuccess}
+                  </div>
+                )}
+
+                <div>
+                  <label className="form-label">Current Password</label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      value={passwordData.currentPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                      className="input-field pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showCurrentPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label">New Password</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={passwordData.newPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                      className="input-field pr-10"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showNewPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label">Confirm New Password</label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={passwordData.confirmPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                      className="input-field pr-10"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showConfirmPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={passwordLoading}
+                    className="btn-primary"
+                  >
+                    {passwordLoading ? 'Changing...' : 'Update Password'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPasswordForm(false);
+                      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                      setPasswordError('');
+                      setPasswordSuccess('');
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {!showPasswordForm && (
+              <p className="text-sm text-gray-500">
+                Keep your account secure by using a strong password that you don't use elsewhere.
+              </p>
+            )}
           </div>
         )}
       </div>

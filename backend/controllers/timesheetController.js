@@ -674,16 +674,16 @@ exports.getEmployeeHoursReport = async (req, res) => {
 
     // Filter by employee for managers or self for employees
     if (employeeId) {
-      matchQuery.employeeId = mongoose.Types.ObjectId(employeeId);
+      matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
     } else if (req.user.role === 'employee') {
-      matchQuery.employeeId = mongoose.Types.ObjectId(req.user.id);
+      matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
     }
 
     // Team leads can only see their team's reports
     if (req.user.role === 'team_lead' && !employeeId) {
       const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
       const teamMemberIds = teamMembers.map(m => m._id);
-      teamMemberIds.push(mongoose.Types.ObjectId(req.user.id)); // Include self
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
       matchQuery.employeeId = { $in: teamMemberIds };
     }
 
@@ -750,9 +750,17 @@ exports.getProjectHoursReport = async (req, res) => {
 
     // Apply employee filter for employees or specific requests
     if (employeeId) {
-      matchQuery.employeeId = mongoose.Types.ObjectId(employeeId);
+      matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
     } else if (req.user.role === 'employee') {
-      matchQuery.employeeId = mongoose.Types.ObjectId(req.user.id);
+      matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
+    }
+
+    // Team leads can only see their team's project reports
+    if (req.user.role === 'team_lead' && !employeeId) {
+      const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
+      const teamMemberIds = teamMembers.map(m => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      matchQuery.employeeId = { $in: teamMemberIds };
     }
 
     const report = await Timesheet.aggregate([
@@ -807,9 +815,17 @@ exports.getWeeklySummaryReport = async (req, res) => {
     };
 
     if (employeeId) {
-      matchQuery.employeeId = mongoose.Types.ObjectId(employeeId);
+      matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
     } else if (req.user.role === 'employee') {
-      matchQuery.employeeId = mongoose.Types.ObjectId(req.user.id);
+      matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
+    }
+
+    // Team leads can only see their team's weekly summary
+    if (req.user.role === 'team_lead' && !employeeId) {
+      const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
+      const teamMemberIds = teamMembers.map(m => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      matchQuery.employeeId = { $in: teamMemberIds };
     }
 
     const report = await Timesheet.aggregate([
@@ -889,6 +905,119 @@ exports.getDailySummaryReport = async (req, res) => {
     });
   } catch (error) {
     console.error('Get daily summary error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Get employee weekly summary report - Breakdown by employee with weekly hours
+ * GET /api/timesheets/reports/employee-weekly-summary
+ */
+exports.getEmployeeWeeklySummaryReport = async (req, res) => {
+  try {
+    const { startDate, endDate, employeeId } = req.query;
+
+    // Validate date range
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: 'Please provide startDate and endDate' });
+    }
+
+    let matchQuery = {
+      date: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      },
+      status: 'Approved',
+    };
+
+    // Filter by specific employee if provided
+    if (employeeId) {
+      matchQuery.employeeId = new mongoose.Types.ObjectId(employeeId);
+    } else if (req.user.role === 'employee') {
+      matchQuery.employeeId = new mongoose.Types.ObjectId(req.user.id);
+    }
+
+    // Team leads can only see their team's reports
+    if (req.user.role === 'team_lead' && !employeeId) {
+      const teamMembers = await User.find({ managerId: req.user.id }).select('_id');
+      const teamMemberIds = teamMembers.map(m => m._id);
+      teamMemberIds.push(new mongoose.Types.ObjectId(req.user.id)); // Include self
+      matchQuery.employeeId = { $in: teamMemberIds };
+    }
+
+    const report = await Timesheet.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            employeeId: '$employeeId',
+            year: { $year: '$date' },
+            week: { $week: '$date' },
+          },
+          totalHours: { $sum: '$totalHours' },
+          overtimeHours: { $sum: '$overtimeHours' },
+          entriesCount: { $sum: 1 },
+          weekStartDate: { $min: '$date' },
+          weekEndDate: { $max: '$date' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id.employeeId',
+          foreignField: '_id',
+          as: 'employee',
+        },
+      },
+      { $unwind: '$employee' },
+      {
+        $group: {
+          _id: '$_id.employeeId',
+          employeeName: { $first: '$employee.name' },
+          employeeEmail: { $first: '$employee.email' },
+          department: { $first: '$employee.department' },
+          totalHours: { $sum: '$totalHours' },
+          overtimeHours: { $sum: '$overtimeHours' },
+          entriesCount: { $sum: '$entriesCount' },
+          weeklyBreakdown: {
+            $push: {
+              week: '$_id.week',
+              year: '$_id.year',
+              totalHours: '$totalHours',
+              overtimeHours: '$overtimeHours',
+              entriesCount: '$entriesCount',
+              weekStartDate: '$weekStartDate',
+              weekEndDate: '$weekEndDate',
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          employeeId: '$_id',
+          employeeName: 1,
+          employeeEmail: 1,
+          department: 1,
+          totalHours: 1,
+          overtimeHours: 1,
+          entriesCount: 1,
+          weeklyBreakdown: 1,
+        },
+      },
+      { $sort: { totalHours: -1 } },
+    ]);
+
+    // Sort weekly breakdown within each employee
+    report.forEach(emp => {
+      emp.weeklyBreakdown.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.week - a.week;
+      });
+    });
+
+    res.json(report);
+  } catch (error) {
+    console.error('Get employee weekly summary report error:', error);
     res.status(500).json({ message: error.message });
   }
 };

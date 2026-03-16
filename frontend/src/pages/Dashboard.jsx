@@ -12,6 +12,7 @@ const Dashboard = () => {
   const [leaves, setLeaves] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState({});
+  const [leaveBalanceStats, setLeaveBalanceStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [teamMembers, setTeamMembers] = useState([]);
 
@@ -30,6 +31,14 @@ const Dashboard = () => {
       setLoading(true);
       const leaveRes = await leaveService.getMyLeaves();
       setLeaves(leaveRes.data);
+
+      // Fetch leave balance stats
+      try {
+        const balanceStatsRes = await leaveService.getLeaveBalanceStats();
+        setLeaveBalanceStats(balanceStatsRes.data);
+      } catch (error) {
+        console.error('Error fetching leave balance stats:', error);
+      }
 
       if (user?.role === 'team_lead') {
         try {
@@ -190,35 +199,44 @@ const Dashboard = () => {
             <div className="space-y-4">
               <LeaveTypeBar 
                 label="Casual Leave" 
-                used={stats.used || 0} 
-                total={leaveBalance.casualLeave || 12}
+                used={leaveBalanceStats?.used?.casualLeave || 0} 
+                total={leaveBalanceStats?.allocated?.casualLeave || leaveBalance.casualLeave || 12}
                 color="bg-blue-500"
               />
               <LeaveTypeBar 
                 label="Sick Leave" 
-                used={0} 
-                total={leaveBalance.sickLeave || 10}
+                used={leaveBalanceStats?.used?.sickLeave || 0} 
+                total={leaveBalanceStats?.allocated?.sickLeave || leaveBalance.sickLeave || 10}
                 color="bg-orange-500"
               />
               <LeaveTypeBar 
                 label="Earned Leave" 
-                used={0} 
-                total={leaveBalance.earnedLeave || 20}
+                used={leaveBalanceStats?.used?.earnedLeave || 0} 
+                total={leaveBalanceStats?.allocated?.earnedLeave || leaveBalance.earnedLeave || 20}
                 color="bg-green-500"
               />
-              {leaveBalance.maternityLeave > 0 && (
+              {(leaveBalance.maternityLeave > 0 || leaveBalanceStats?.allocated?.maternityLeave > 0) && (
                 <LeaveTypeBar 
                   label="Maternity Leave" 
-                  used={0} 
-                  total={leaveBalance.maternityLeave || 180}
+                  used={leaveBalanceStats?.used?.maternityLeave || 0} 
+                  total={leaveBalanceStats?.allocated?.maternityLeave || leaveBalance.maternityLeave || 180}
                   color="bg-pink-500"
                 />
+              )}
+              {/* Show unpaid leaves used if any */}
+              {leaveBalanceStats?.summary?.unpaidLeavesUsed > 0 && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-700">Unpaid Leave Used</span>
+                    <span className="text-sm text-gray-600">{leaveBalanceStats.summary.unpaidLeavesUsed} days</span>
+                  </div>
+                </div>
               )}
             </div>
             <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-sm text-gray-700">
-                <span className="font-semibold">Total Remaining: </span>
-                <span className="text-primary font-bold">{stats.remaining || 12} days</span>
+                <span className="font-semibold">Paid Leaves Remaining: </span>
+                <span className="text-primary font-bold">{leaveBalanceStats?.summary?.remainingPaidLeaves || stats.remaining || 12} days</span>
               </p>
             </div>
           </div>

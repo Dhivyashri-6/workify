@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiClock, FiBarChart2, FiPieChart, FiCalendar, FiDownload, FiTrendingUp } from 'react-icons/fi';
+import { FiClock, FiBarChart2, FiPieChart, FiCalendar, FiDownload, FiTrendingUp, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { timesheetService, userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../layouts/DashboardLayout';
@@ -16,6 +16,7 @@ const TimesheetReportsPage = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('employee'); // 'employee' | 'project' | 'weekly'
   const [teamMembers, setTeamMembers] = useState([]);
+  const [expandedEmployees, setExpandedEmployees] = useState({});
   
   // Report data
   const [employeeReport, setEmployeeReport] = useState([]);
@@ -55,15 +56,22 @@ const TimesheetReportsPage = () => {
   }, [isManager]);
 
   /**
-   * Fetch employee hours report
+   * Fetch employee hours report (with weekly breakdown for managers)
    */
   const fetchEmployeeReport = useCallback(async () => {
     try {
-      const response = await timesheetService.getEmployeeHoursReport({
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        employeeId: filters.employeeId || undefined,
-      });
+      // Use the employee weekly summary endpoint for managers
+      const response = isManager 
+        ? await timesheetService.getEmployeeWeeklySummaryReport({
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+            employeeId: filters.employeeId || undefined,
+          })
+        : await timesheetService.getEmployeeHoursReport({
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+            employeeId: filters.employeeId || undefined,
+          });
       setEmployeeReport(response.data || []);
       
       // Calculate summary
@@ -85,7 +93,7 @@ const TimesheetReportsPage = () => {
     } catch (err) {
       console.error('Failed to fetch employee report:', err);
     }
-  }, [filters]);
+  }, [filters, isManager]);
 
   /**
    * Fetch project hours report
@@ -365,33 +373,102 @@ const TimesheetReportsPage = () => {
                     </div>
                   ) : (
                     employeeReport.map((emp, index) => (
-                      <div key={emp.employeeId || index} className="p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold">
-                              {emp.employeeName?.[0]?.toUpperCase() || 'U'}
+                      <div key={emp.employeeId || index} className="bg-gray-50 rounded-lg overflow-hidden">
+                        <div 
+                          className={`p-4 ${isManager && emp.weeklyBreakdown ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                          onClick={() => {
+                            if (isManager && emp.weeklyBreakdown) {
+                              setExpandedEmployees(prev => ({
+                                ...prev,
+                                [emp.employeeId]: !prev[emp.employeeId]
+                              }));
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold">
+                                {emp.employeeName?.[0]?.toUpperCase() || 'U'}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900">{emp.employeeName}</p>
+                                <p className="text-sm text-gray-500">{emp.department || 'No department'}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-semibold text-gray-900">{emp.employeeName}</p>
-                              <p className="text-sm text-gray-500">{emp.department || 'No department'}</p>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="text-xl font-bold text-gray-900">{emp.totalHours.toFixed(1)} hrs</p>
+                                {emp.overtimeHours > 0 && (
+                                  <p className="text-sm text-orange-600">+{emp.overtimeHours.toFixed(1)} OT</p>
+                                )}
+                              </div>
+                              {isManager && emp.weeklyBreakdown && (
+                                <div className="text-gray-400">
+                                  {expandedEmployees[emp.employeeId] ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xl font-bold text-gray-900">{emp.totalHours.toFixed(1)} hrs</p>
-                            {emp.overtimeHours > 0 && (
-                              <p className="text-sm text-orange-600">+{emp.overtimeHours.toFixed(1)} OT</p>
-                            )}
+                          <div className="mt-3">
+                            <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${getHoursColor(emp.totalHours)} transition-all duration-500`}
+                                style={{ width: `${getPercentage(emp.totalHours, maxEmployeeHours)}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">{emp.entriesCount} entries</p>
                           </div>
                         </div>
-                        <div className="mt-3">
-                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full ${getHoursColor(emp.totalHours)} transition-all duration-500`}
-                              style={{ width: `${getPercentage(emp.totalHours, maxEmployeeHours)}%` }}
-                            />
+                        
+                        {/* Weekly Breakdown for Managers */}
+                        {isManager && emp.weeklyBreakdown && expandedEmployees[emp.employeeId] && (
+                          <div className="border-t border-gray-200 bg-white px-4 py-3">
+                            <p className="text-sm font-semibold text-gray-700 mb-3">Weekly Summary</p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Week</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Period</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Hours</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Overtime</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Entries</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {emp.weeklyBreakdown.map((week, weekIdx) => (
+                                    <tr key={weekIdx} className="hover:bg-gray-50">
+                                      <td className="px-3 py-2">
+                                        <span className="font-medium">Week {week.week}</span>
+                                        <span className="text-gray-500 ml-1">({week.year})</span>
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-600">
+                                        {week.weekStartDate && new Date(week.weekStartDate).toLocaleDateString('en-US', { 
+                                          month: 'short', 
+                                          day: 'numeric' 
+                                        })}
+                                        {' - '}
+                                        {week.weekEndDate && new Date(week.weekEndDate).toLocaleDateString('en-US', { 
+                                          month: 'short', 
+                                          day: 'numeric' 
+                                        })}
+                                      </td>
+                                      <td className="px-3 py-2 font-semibold text-gray-900">{week.totalHours.toFixed(1)} hrs</td>
+                                      <td className="px-3 py-2">
+                                        {week.overtimeHours > 0 ? (
+                                          <span className="text-orange-600 font-medium">+{week.overtimeHours.toFixed(1)}</span>
+                                        ) : (
+                                          <span className="text-gray-400">-</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-600">{week.entriesCount}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">{emp.entriesCount} entries</p>
-                        </div>
+                        )}
                       </div>
                     ))
                   )}

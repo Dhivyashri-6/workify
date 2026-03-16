@@ -29,6 +29,7 @@ export const authService = {
     localStorage.removeItem('user');
   },
   getCurrentUser: () => apiClient.get('/auth/me'),
+  changePassword: (currentPassword, newPassword) => apiClient.put('/auth/change-password', { currentPassword, newPassword }),
 };
 
 export const userService = {
@@ -45,6 +46,8 @@ export const userService = {
 export const leaveService = {
   applyLeave: (data) => apiClient.post('/leaves/apply', data),
   getMyLeaves: () => apiClient.get('/leaves/my-leaves'),
+  getLeaveBalanceStats: () => apiClient.get('/leaves/balance-stats'),
+  getBlockedDates: () => apiClient.get('/leaves/blocked-dates'),
   getTeamLeaves: () => apiClient.get('/leaves/team-leaves'),
   getAllLeaves: () => apiClient.get('/leaves'),
   getLeaveRequests: () => apiClient.get('/leaves/requests'),
@@ -94,6 +97,7 @@ export const timesheetService = {
   getProjectHoursReport: (params) => apiClient.get('/timesheets/reports/project-hours', { params }),
   getWeeklySummaryReport: (params) => apiClient.get('/timesheets/reports/weekly-summary', { params }),
   getDailySummaryReport: (params) => apiClient.get('/timesheets/reports/daily-summary', { params }),
+  getEmployeeWeeklySummaryReport: (params) => apiClient.get('/timesheets/reports/employee-weekly-summary', { params }),
 };
 
 export default apiClient;
