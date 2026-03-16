@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -36,6 +36,7 @@ export const userService = {
   getProfile: () => apiClient.get('/users/profile'),
   updateProfile: (data) => apiClient.put('/users/profile', data),
   getTeamMembers: () => apiClient.get('/users/team'),
+  getManagers: () => apiClient.get('/users/managers'),
   getAllUsers: () => apiClient.get('/users'),
   addUser: (userData) => apiClient.post('/users', userData),
   updateUser: (id, userData) => apiClient.put(`/users/${id}`, userData),

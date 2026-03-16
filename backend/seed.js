@@ -535,10 +535,10 @@ const seedDatabase = async () => {
     console.log('  - daniel.white@example.com / password123');
     console.log('  - olivia.taylor@example.com / password123');
     console.log('\n📊 Summary:');
-    console.log(`  - ${directors.length} Directors`);
-    console.log(`  - ${managers.length} Managers`);
-    console.log(`  - ${hrStaff.length} HR Staff`);
-    console.log(`  - ${employees.length} Employees`);
+    console.log(`  - ${createdUsers.filter(u => u.role === 'director').length} Directors`);
+    console.log(`  - ${createdUsers.filter(u => u.role === 'team_lead').length} Team Leads`);
+    console.log(`  - ${createdUsers.filter(u => u.role === 'hr').length} HR Staff`);
+    console.log(`  - ${createdUsers.filter(u => u.role === 'employee').length} Employees`);
     console.log(`  - Total: ${createdUsers.length} Users`);
 
     process.exit(0);
