@@ -13,7 +13,6 @@ import ApplyLeavePage from './pages/ApplyLeavePage';
 import HolidayCalendarPage from './pages/HolidayCalendarPage';
 import AdminPage from './pages/AdminPage';
 import UserManagementPage from './pages/UserManagementPage';
-import SettingsPage from './pages/SettingsPage';
 import TeamLeavesPage from './pages/TeamLeavesPage';
 import LeaveApprovalsPage from './pages/LeaveApprovalsPage';
 import ReportsPage from './pages/ReportsPage';
@@ -87,14 +86,6 @@ const App = () => {
             element={
               <ProtectedRoute requiredRole="director">
                 <UserManagementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <SettingsPage />
               </ProtectedRoute>
             }
           />

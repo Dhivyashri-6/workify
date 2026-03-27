@@ -58,7 +58,7 @@ const LandingPage = () => {
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
               <div className="inline-block bg-blue-100 text-primary px-4 py-2 rounded-full text-sm font-semibold mb-4">
-                By Qantler Technologies
+                By HAP Solutions
               </div>
               <h2 className="text-5xl font-bold text-gray-900 mb-6 leading-tight">
                 Enterprise HRMS<br/>
@@ -84,7 +84,7 @@ const LandingPage = () => {
                   alt="Qantler Logo"
                   className="w-48 h-48 mb-4 opacity-90"
                 />
-                <p className="text-2xl font-bold text-white mt-4">Qantler Technologies</p>
+                <p className="text-2xl font-bold text-white mt-4">HAP Solutions</p>
                 <p className="text-sm text-gray-300 mt-2">Strategic IT Solutions</p>
               </div>
             </div>
@@ -102,7 +102,7 @@ const LandingPage = () => {
                 "To protect your businesses & much more"
               </p>
               <p className="text-gray-600 mb-4">
-                At Qantler Technologies, we focus on doing it right even in the smallest details. This commitment makes our relationships successful and our solutions trustworthy.
+                At HAP Solutions, we focus on doing it right even in the smallest details. This commitment makes our relationships successful and our solutions trustworthy.
               </p>
               <p className="text-gray-600 mb-6">
                 WORKIFY embodies this philosophy by providing a refreshingly unique HR platform that combines well-known development methods with a customized approach for each organization.
@@ -181,7 +181,7 @@ const LandingPage = () => {
       <div className="py-20 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h3 className="text-4xl font-bold text-gray-900 mb-4">About Qantler Technologies</h3>
+            <h3 className="text-4xl font-bold text-gray-900 mb-4">About HAP Solutions</h3>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">Strategic consulting tailored to every business</p>
           </div>
           <div className="grid md:grid-cols-3 gap-8">
@@ -231,8 +231,8 @@ const LandingPage = () => {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <h4 className="font-bold mb-4 text-lg">WORKIFY</h4>
-              <p className="text-gray-400 text-sm">Enterprise HRMS by Qantler Technologies</p>
-              <p className="text-gray-500 text-xs mt-2">© 2024 Qantler Technologies. All rights reserved.</p>
+              <p className="text-gray-400 text-sm">Enterprise HRMS by HAP Solutions</p>
+              <p className="text-gray-500 text-xs mt-2">© 2024 HAP Solutions. All rights reserved.</p>
             </div>
             <div>
               <h4 className="font-bold mb-4">Features</h4>
@@ -257,7 +257,7 @@ const LandingPage = () => {
             </div>
           </div>
           <div className="border-t border-gray-800 pt-8 text-center text-gray-500 text-sm">
-            <p>Crafted with precision by Qantler Technologies | Enterprise HRMS Solution</p>
+            <p>Crafted with precision by HAP Solutions | Enterprise HRMS Solution</p>
           </div>
         </div>
       </footer>

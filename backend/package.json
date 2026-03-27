@@ -9,7 +9,7 @@
     "add-users": "node addUsers.js"
   },
   "keywords": ["hrms", "leave", "management"],
-  "author": "Qantler Technologies",
+  "author": "HAP Solutions",
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",

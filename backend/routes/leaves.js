@@ -10,6 +10,7 @@ const {
   getLeaveHistory,
   getLeaveBalanceStats,
   getBlockedDates,
+  getMonthlyLeaveUsage,
 } = require('../controllers/leaveController');
 const { auth, authorize } = require('../middleware/auth');
 
@@ -19,6 +20,7 @@ router.post('/apply', auth, applyLeave);
 router.get('/my-leaves', auth, getMyLeaves);
 router.get('/balance-stats', auth, getLeaveBalanceStats);
 router.get('/blocked-dates', auth, getBlockedDates);
+router.get('/monthly-usage', auth, getMonthlyLeaveUsage);
 router.get('/team-leaves', auth, getTeamLeaves);
 router.get('/requests', auth, getLeaveRequests);
 router.get('/history/:userId', auth, getLeaveHistory);
