@@ -29,7 +29,6 @@ const DashboardLayout = ({ children }) => {
     user?.role === 'director' && { path: '/admin', label: 'Admin', icon: FiUsers },
     user?.role === 'director' && { path: '/user-management', label: 'User Management', icon: FiUserCheck },
     user?.role === 'director' && { path: '/reports', label: 'Reports', icon: BsBarChart },
-    user?.role === 'director' && { path: '/settings', label: 'Settings', icon: FiSettings },
   ].filter(Boolean);
 
   const isActive = (path) => location.pathname === path;

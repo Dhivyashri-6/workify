@@ -247,18 +247,6 @@ exports.approveLeave = async (req, res) => {
     leave.status = newStatus;
     await leave.save();
 
-    // If fully approved, update leave balance
-    if (newStatus === 'Approved') {
-      const user = await User.findById(leave.employeeId._id);
-      if (user) {
-        const balanceKey = `${leave.leaveType}Leave`;
-        if (user.leaveBalance[balanceKey] !== undefined) {
-          user.leaveBalance[balanceKey] = Math.max(0, user.leaveBalance[balanceKey] - leave.numberOfDays);
-          await user.save();
-        }
-      }
-    }
-
     res.json({ message: 'Leave approved successfully', leave });
   } catch (error) {
     res.status(500).json({ message: error.message });

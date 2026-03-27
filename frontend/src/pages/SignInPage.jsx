@@ -52,7 +52,7 @@ const SignInPage = () => {
               />
             </div>
             <h1 className="text-3xl font-bold mb-1">WORKIFY</h1>
-            <p className="text-sm text-gray-300">Enterprise HRMS by Qantler Technologies</p>
+            <p className="text-sm text-gray-300">Enterprise HRMS by HAP Solutions</p>
           </div>
 
           {/* Form */}
@@ -128,7 +128,7 @@ const SignInPage = () => {
 
         {/* Footer */}
         <p className="text-center text-gray-600 mt-6 text-sm">
-          © 2024 Qantler Technologies. All rights reserved.
+          © 2024 HAP Solutions. All rights reserved.
         </p>
       </div>
     </div>
