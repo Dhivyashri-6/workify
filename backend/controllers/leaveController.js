@@ -6,10 +6,67 @@ const datesOverlap = (start1, end1, start2, end2) => {
   return start1 <= end2 && start2 <= end1;
 };
 
+const ACTIVE_LEAVE_STATUSES = ['Approved', 'Pending_TeamLeader', 'Pending_HR', 'Pending_Director'];
+const LEAVE_TYPE_BALANCE_KEY = {
+  casual: 'casualLeave',
+  sick: 'sickLeave',
+  earned: 'earnedLeave',
+  maternity: 'maternityLeave',
+};
+
+const toLocalDateString = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getMonthKey = (date) => toLocalDateString(date).slice(0, 7);
+
+const getMonthlyLimitByType = (leaveBalance = {}) => ({
+  casual: Math.max(1, Math.floor((leaveBalance.casualLeave || 12) / 12)),
+  sick: Math.max(1, Math.floor((leaveBalance.sickLeave || 10) / 12)),
+  earned: Math.max(1, Math.floor((leaveBalance.earnedLeave || 20) / 12)),
+  maternity: Math.max(1, Math.floor((leaveBalance.maternityLeave || 180) / 12)),
+});
+
+const splitLeaveDaysByMonth = (startDate, endDate) => {
+  const monthWiseDays = {};
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    const monthKey = getMonthKey(current);
+    monthWiseDays[monthKey] = (monthWiseDays[monthKey] || 0) + 1;
+    current.setDate(current.getDate() + 1);
+  }
+
+  return monthWiseDays;
+};
+
+const getMonthlyUsageByType = (leaves = [], leaveType) => {
+  const usage = {};
+
+  leaves.forEach((leave) => {
+    if (leave.leaveType !== leaveType) return;
+    const monthWiseDays = splitLeaveDaysByMonth(new Date(leave.startDate), new Date(leave.endDate));
+    Object.entries(monthWiseDays).forEach(([monthKey, days]) => {
+      usage[monthKey] = (usage[monthKey] || 0) + days;
+    });
+  });
+
+  return usage;
+};
+
 // Apply leave
 exports.applyLeave = async (req, res) => {
   try {
     const { leaveType, startDate, endDate, numberOfDays, reason, isPaid } = req.body;
+    const user = await User.findById(req.user.id).select('leaveBalance');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
     const requestStart = new Date(startDate);
     const requestEnd = new Date(endDate);
@@ -17,7 +74,7 @@ exports.applyLeave = async (req, res) => {
     // Check for overlapping approved or pending leaves
     const existingLeaves = await Leave.find({
       employeeId: req.user.id,
-      status: { $in: ['Approved', 'Pending_TeamLeader', 'Pending_HR', 'Pending_Director'] },
+      status: { $in: ACTIVE_LEAVE_STATUSES },
     });
 
     for (const leave of existingLeaves) {
@@ -49,6 +106,23 @@ exports.applyLeave = async (req, res) => {
     // 'other' type is unpaid by default, but can be overridden
     let isLeavePaid = isPaid !== undefined ? isPaid : (leaveType !== 'other');
 
+    // Enforce monthly leave cap for paid leave types.
+    if (LEAVE_TYPE_BALANCE_KEY[leaveType]) {
+      const monthlyLimits = getMonthlyLimitByType(user.leaveBalance || {});
+      const monthlyLimit = monthlyLimits[leaveType];
+      const requestMonthWiseDays = splitLeaveDaysByMonth(requestStart, requestEnd);
+      const usedByMonth = getMonthlyUsageByType(existingLeaves, leaveType);
+
+      for (const [monthKey, requestedDays] of Object.entries(requestMonthWiseDays)) {
+        const usedDays = usedByMonth[monthKey] || 0;
+        if (usedDays + requestedDays > monthlyLimit) {
+          return res.status(400).json({
+            message: `${leaveType.charAt(0).toUpperCase() + leaveType.slice(1)} leave monthly limit reached for ${monthKey}. Limit: ${monthlyLimit} day(s), already used: ${usedDays} day(s).`,
+          });
+        }
+      }
+    }
+
     const leave = await Leave.create({
       employeeId: req.user.id,
       leaveType,
@@ -73,6 +147,58 @@ exports.applyLeave = async (req, res) => {
     }
 
     res.status(201).json({ message: 'Leave applied successfully', leave });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getMonthlyLeaveUsage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const month = req.query.month;
+    const monthPattern = /^\d{4}-\d{2}$/;
+
+    if (!month || !monthPattern.test(month)) {
+      return res.status(400).json({ message: 'Valid month is required in YYYY-MM format' });
+    }
+
+    const user = await User.findById(userId).select('leaveBalance');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const leaves = await Leave.find({
+      employeeId: userId,
+      status: { $in: ACTIVE_LEAVE_STATUSES },
+      leaveType: { $in: Object.keys(LEAVE_TYPE_BALANCE_KEY) },
+    }).select('leaveType startDate endDate');
+
+    const monthlyLimit = getMonthlyLimitByType(user.leaveBalance || {});
+    const usage = {
+      casual: 0,
+      sick: 0,
+      earned: 0,
+      maternity: 0,
+    };
+
+    leaves.forEach((leave) => {
+      const daysByMonth = splitLeaveDaysByMonth(new Date(leave.startDate), new Date(leave.endDate));
+      usage[leave.leaveType] += daysByMonth[month] || 0;
+    });
+
+    const remaining = {
+      casual: Math.max(0, monthlyLimit.casual - usage.casual),
+      sick: Math.max(0, monthlyLimit.sick - usage.sick),
+      earned: Math.max(0, monthlyLimit.earned - usage.earned),
+      maternity: Math.max(0, monthlyLimit.maternity - usage.maternity),
+    };
+
+    res.json({
+      month,
+      monthlyLimit,
+      usage,
+      remaining,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -422,15 +548,6 @@ exports.getLeaveBalanceStats = async (req, res) => {
 };
 
 // Get blocked dates (dates that already have approved or pending leaves)
-// Helper function to format date as YYYY-MM-DD in local timezone
-const formatDateLocal = (date) => {
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 exports.getBlockedDates = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -438,7 +555,7 @@ exports.getBlockedDates = async (req, res) => {
     // Get all approved and pending leaves for this user
     const leaves = await Leave.find({
       employeeId: userId,
-      status: { $in: ['Approved', 'Pending_TeamLeader', 'Pending_HR', 'Pending_Director'] },
+      status: { $in: ACTIVE_LEAVE_STATUSES },
     }).select('startDate endDate status leaveType');
 
     // Generate list of all blocked dates
@@ -453,7 +570,7 @@ exports.getBlockedDates = async (req, res) => {
       const current = new Date(start);
       while (current <= end) {
         // Use local date format to avoid timezone shifts
-        const dateStr = formatDateLocal(current);
+        const dateStr = toLocalDateString(current);
         if (!blockedDates.includes(dateStr)) {
           blockedDates.push(dateStr);
           blockedDateDetails.push({

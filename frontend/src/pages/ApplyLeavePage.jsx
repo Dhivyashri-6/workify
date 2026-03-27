@@ -15,6 +15,8 @@ const ApplyLeavePage = () => {
   // Leave balance and blocked dates state
   const [leaveBalanceStats, setLeaveBalanceStats] = useState(null);
   const [blockedDates, setBlockedDates] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [monthlyUsage, setMonthlyUsage] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
   
   // Refresh user data and fetch leave info on mount
@@ -22,6 +24,27 @@ const ApplyLeavePage = () => {
     refreshUser();
     fetchLeaveInfo();
   }, []);
+
+  useEffect(() => {
+    fetchMonthlyUsage(selectedMonth);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    const currentTypeDisabled = leaveTypes.some(
+      (type) => type.value === formData.leaveType && isLeaveTypeDisabled(type)
+    );
+
+    if (currentTypeDisabled) {
+      const firstAvailableType = leaveTypes.find((type) => !isLeaveTypeDisabled(type));
+      if (firstAvailableType && firstAvailableType.value !== formData.leaveType) {
+        setFormData((prev) => ({
+          ...prev,
+          leaveType: firstAvailableType.value,
+          isPaid: firstAvailableType.isPaid,
+        }));
+      }
+    }
+  }, [monthlyUsage, leaveBalanceStats]);
 
   const fetchLeaveInfo = async () => {
     try {
@@ -48,6 +71,18 @@ const ApplyLeavePage = () => {
     }
   };
 
+  const fetchMonthlyUsage = async (month) => {
+    try {
+      const monthlyRes = await leaveService.getMonthlyUsage(month);
+      if (monthlyRes.data) {
+        setMonthlyUsage(monthlyRes.data);
+      }
+    } catch (error) {
+      console.error('Error fetching monthly leave usage:', error);
+      setMonthlyUsage(null);
+    }
+  };
+
   const [formData, setFormData] = useState({
     leaveType: 'casual',
     startDate: '',
@@ -70,6 +105,17 @@ const ApplyLeavePage = () => {
     { value: 'maternity', label: 'Maternity Leave', available: getRemainingBalance('maternity'), isPaid: true },
     { value: 'other', label: 'Other (Unpaid)', available: 999, isPaid: false },
   ];
+
+  const mapLeaveTypeKey = (type) => {
+    if (type === 'other') return null;
+    return type;
+  };
+
+  const getMonthlyRemaining = (type) => {
+    const key = mapLeaveTypeKey(type);
+    if (!key || !monthlyUsage?.remaining) return Number.POSITIVE_INFINITY;
+    return monthlyUsage.remaining[key] ?? 0;
+  };
 
   // Helper function to format date as YYYY-MM-DD in local timezone
   const formatDateLocal = (date) => {
@@ -121,6 +167,7 @@ const ApplyLeavePage = () => {
       
       // Valid start date - update and check end date range
       setError('');
+      setSelectedMonth(value ? value.slice(0, 7) : new Date().toISOString().slice(0, 7));
       const endDate = formData.endDate;
       if (endDate) {
         const conflicts = checkDateConflicts(value, endDate);
@@ -245,6 +292,16 @@ const ApplyLeavePage = () => {
       return;
     }
 
+    // Enforce selected month quota in UI before backend validation.
+    if (formData.leaveType !== 'other') {
+      const monthlyRemaining = getMonthlyRemaining(formData.leaveType);
+      if (formData.numberOfDays > monthlyRemaining) {
+        setError(`Monthly ${selectedLeave.label} limit reached. Remaining in ${selectedMonth}: ${monthlyRemaining} day(s).`);
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       await leaveService.applyLeave(formData);
       setSuccess('Leave applied successfully!');
@@ -260,7 +317,7 @@ const ApplyLeavePage = () => {
   // Check if a leave type should be disabled (0 balance)
   const isLeaveTypeDisabled = (leaveType) => {
     if (leaveType.value === 'other') return false; // Unpaid is always available
-    return leaveType.available <= 0;
+    return leaveType.available <= 0 || getMonthlyRemaining(leaveType.value) <= 0;
   };
 
   return (
@@ -301,6 +358,11 @@ const ApplyLeavePage = () => {
                 <span className="font-medium">Maternity:</span> {getRemainingBalance('maternity')} days
               </div>
             </div>
+            {monthlyUsage && (
+              <div className="mt-3 text-sm text-blue-700">
+                Monthly quota for <span className="font-semibold">{monthlyUsage.month}</span> is active. Leave types are disabled once monthly remaining reaches zero.
+              </div>
+            )}
           </div>
         )}
 
@@ -361,7 +423,9 @@ const ApplyLeavePage = () => {
                       </div>
                       {leaveType.value !== 'other' ? (
                         <p className={`text-sm ${isDisabled ? 'text-red-500' : 'text-gray-600'}`}>
-                          {isDisabled ? 'No balance remaining' : `Remaining: ${leaveType.available} days`}
+                          {isDisabled
+                            ? 'No monthly/annual balance remaining'
+                            : `Annual: ${leaveType.available} days | Monthly: ${getMonthlyRemaining(leaveType.value)} days`}
                         </p>
                       ) : (
                         <p className="text-sm text-gray-500 italic">No limit (unpaid)</p>

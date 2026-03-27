@@ -49,6 +49,7 @@ export const leaveService = {
   getMyLeaves: () => apiClient.get('/leaves/my-leaves'),
   getLeaveBalanceStats: () => apiClient.get('/leaves/balance-stats'),
   getBlockedDates: () => apiClient.get('/leaves/blocked-dates'),
+  getMonthlyUsage: (month) => apiClient.get('/leaves/monthly-usage', { params: { month } }),
   getTeamLeaves: () => apiClient.get('/leaves/team-leaves'),
   getAllLeaves: () => apiClient.get('/leaves'),
   getLeaveRequests: () => apiClient.get('/leaves/requests'),
