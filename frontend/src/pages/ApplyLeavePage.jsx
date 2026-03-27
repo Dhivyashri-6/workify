@@ -5,6 +5,13 @@ import { leaveService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../layouts/DashboardLayout';
 
+const FIELD_REGEX = {
+  leaveType: /^(casual|sick|earned|maternity|other)$/,
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  positiveInteger: /^[1-9]\d*$/,
+  reason: /^[A-Za-z0-9\s.,'"()\-!?/&]+$/,
+};
+
 const ApplyLeavePage = () => {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
@@ -270,6 +277,40 @@ const ApplyLeavePage = () => {
       return;
     }
 
+    if (!FIELD_REGEX.leaveType.test(formData.leaveType)) {
+      setError('Invalid leave type selected');
+      setLoading(false);
+      return;
+    }
+
+    if (!FIELD_REGEX.date.test(formData.startDate) || !FIELD_REGEX.date.test(formData.endDate)) {
+      setError('Dates must be in valid YYYY-MM-DD format');
+      setLoading(false);
+      return;
+    }
+
+    const parsedStartDate = new Date(formData.startDate);
+    const parsedEndDate = new Date(formData.endDate);
+    if (Number.isNaN(parsedStartDate.getTime()) || Number.isNaN(parsedEndDate.getTime())) {
+      setError('Invalid date value provided');
+      setLoading(false);
+      return;
+    }
+
+    const reasonText = formData.reason.trim();
+    if (reasonText.length < 10 || reasonText.length > 500 || !FIELD_REGEX.reason.test(reasonText)) {
+      setError('Reason must be 10-500 characters and contain only letters, numbers, spaces, and common punctuation');
+      setLoading(false);
+      return;
+    }
+
+    const calculatedDays = Math.ceil((parsedEndDate - parsedStartDate) / (1000 * 60 * 60 * 24)) + 1;
+    if (!FIELD_REGEX.positiveInteger.test(String(calculatedDays)) || calculatedDays <= 0) {
+      setError('Invalid number of leave days calculated');
+      setLoading(false);
+      return;
+    }
+
     if (new Date(formData.startDate) > new Date(formData.endDate)) {
       setError('Start date must be before end date');
       setLoading(false);
@@ -303,7 +344,11 @@ const ApplyLeavePage = () => {
     }
 
     try {
-      await leaveService.applyLeave(formData);
+      await leaveService.applyLeave({
+        ...formData,
+        reason: reasonText,
+        numberOfDays: calculatedDays,
+      });
       setSuccess('Leave applied successfully!');
       setTimeout(() => navigate('/leaves'), 1500);
     } catch (err) {
